@@ -48,12 +48,17 @@ jobs:
 
       - name: Qualify the actual APK
         run: |
+          VERSION="$(sed -n 's/.*versionName "\([^"]*\)".*/\1/p' android/app/build.gradle)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          DATASET="$(node -p "require('./src/refrigerant/dataset.json').dataset")"
+          echo "DATASET=$DATASET" >> "$GITHUB_ENV"
+          NAME="CFM-Calculator-${VERSION}-test-${GITHUB_SHA::7}"
           APK="$(ls android/app/build/outputs/apk/release/*.apk | head -1)"
           mkdir -p out
-          cp "$APK" "out/CFM-Calculator-4.0.0-test-${GITHUB_SHA::7}.apk"
-          cp android/app/build/outputs/bundle/release/*.aab "out/CFM-Calculator-4.0.0-test-${GITHUB_SHA::7}.aab"
+          cp "$APK" "out/$NAME.apk"
+          cp android/app/build/outputs/bundle/release/*.aab "out/$NAME.aab"
           set +e
-          scripts/qualify-apk.sh "out/CFM-Calculator-4.0.0-test-${GITHUB_SHA::7}.apk" "$EXPECTED_PACKAGE" | tee out/qualification.md
+          { echo "Refrigerant dataset: $DATASET"; echo; scripts/qualify-apk.sh "out/$NAME.apk" "$EXPECTED_PACKAGE"; } | tee out/qualification.md
           rc=${PIPESTATUS[0]}
           cat out/qualification.md >> "$GITHUB_STEP_SUMMARY"
           sha256sum out/*.apk out/*.aab | tee out/SHA256SUMS.txt
@@ -71,7 +76,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="v4.0.0-test.${GITHUB_RUN_NUMBER}"
+          TAG="v${VERSION}-test.${GITHUB_RUN_NUMBER}"
           gh release create "$TAG" out/* --prerelease --target "$GITHUB_SHA" \
-            --title "CFM Calculator 4.0.0 test build #${GITHUB_RUN_NUMBER} (${GITHUB_SHA::7})" \
-            --notes "Physical-test candidate. Debug-signed. See qualification.md. Source ${GITHUB_SHA}."
+            --title "CFM Calculator ${VERSION} test build #${GITHUB_RUN_NUMBER} (${GITHUB_SHA::7})" \
+            --notes "Physical-test candidate. Debug-signed (ephemeral key: uninstall the previous test build first). Refrigerant dataset ${DATASET}. See qualification.md. Source ${GITHUB_SHA}."

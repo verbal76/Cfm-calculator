@@ -28,3 +28,8 @@
 7. About: version 4.0.0 (build 4), package, target SDK 36, Copy Diagnostics pastes plain text.
 8. Persistence: nothing is stored by design; force-stop → relaunch shows empty fields.
 9. Parity (if legacy APK runnable on a device): compare the same CFM and Subcool inputs; note output digits.
+
+## 4.1.0 (refrigerant round)
+Subcooling now takes pressure + refrigerant (bubble point); Superheat is a real calculator (dew point); new Refrigerant PT tool; shared refrigerant picker;
+launch screen is the Main Menu. Historical manual-saturation Subcooling and its original strings remain in `src/calc.ts` as characterization tests only; the UI wording
+changed to neutral "Below / Within / Above target range". Target superheat intentionally not implemented (see docs/REFRIGERANT-DATA.md). Version 4.1.0 / code 5.

@@ -1,4 +1,5 @@
 import { registerPlugin, Capacitor } from '@capacitor/core';
+import { DATASET_ID } from './refrigerant/engine';
 
 declare const __BUILD_SHA__: string;
 declare const __BUILD_BRANCH__: string;
@@ -53,6 +54,7 @@ export function formatDiagnostics(n: NativeInfo | null, src = sourceInfo(), now 
     `Target SDK: ${n?.targetSdk ?? 'unavailable'}`,
     `Min SDK: ${n?.minSdk ?? 'unavailable'}`,
     `Build type: ${n?.buildType ?? 'unavailable'}`,
+    `Refrigerant dataset: ${DATASET_ID}`,
     `Captured: ${now.toISOString()}`,
   ];
   return lines.join('\n');

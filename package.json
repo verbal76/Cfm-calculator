@@ -1,6 +1,6 @@
 {
   "name": "cfm-calculator",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "private": true,
   "type": "module",
   "description": "Verbal's CFM calculator - Capacitor modernization of the legacy App Inventor app",

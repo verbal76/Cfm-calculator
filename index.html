@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
   <title>Verbal's CFM Calculator</title>
+  <link rel="icon" href="data:," />
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
@@ -34,45 +35,95 @@
     <nav><a class="btn" href="#menu">Main Menu</a></nav>
   </section>
 
-  <!-- Menu (legacy Menu screen) -->
+  <!-- Main menu (launch screen) -->
   <section id="screen-menu" data-screen hidden>
-    <h1>Main Menu</h1>
-    <p class="note">Are you calculating superheat and sub cooling or CFM?</p>
+    <h1>Verbal's CFM Calculator</h1>
+    <p class="note">Choose a tool.</p>
     <a class="btn big" href="#cfm">CFM</a>
-    <a class="btn big" href="#subcool">Subcool</a>
+    <a class="btn big" href="#subcool">Subcooling</a>
     <a class="btn big" href="#superheat">Superheat</a>
+    <a class="btn big" href="#pt">Refrigerant PT</a>
     <nav><a class="btn" href="#about">About</a></nav>
   </section>
 
-  <!-- Subcool (legacy Subcool screen) -->
+  <!-- Subcooling (refrigerant-aware): bubble point at liquid pressure -->
   <section id="screen-subcool" data-screen hidden>
     <h1>Subcooling</h1>
-    <label for="sc-target">Target Subcooling</label>
-    <input id="sc-target" inputmode="decimal" autocomplete="off" placeholder="What is your target Subcooling?" />
-    <label for="sc-liq">Liquid line temperature</label>
-    <input id="sc-liq" inputmode="decimal" autocomplete="off" placeholder="What is your liquid line temperature?" />
-    <label for="sc-sat">Liquid saturation temperature</label>
-    <input id="sc-sat" inputmode="decimal" autocomplete="off" placeholder="What is your liquid saturation temperature?" />
-    <label for="sc-tol">+/- of Target Subcooling is acceptable</label>
-    <input id="sc-tol" inputmode="decimal" autocomplete="off" value="3" />
+    <div data-picker></div>
+    <label for="sc-psig">Liquid (high-side) pressure, psig</label>
+    <input id="sc-psig" inputmode="decimal" autocomplete="off" placeholder="gauge pressure" />
+    <label for="sc-temp">Measured liquid-line temperature, °F</label>
+    <input id="sc-temp" inputmode="decimal" autocomplete="off" placeholder="°F" />
+    <div class="two">
+      <div><label for="sc-target">Target subcooling, °F (optional)</label>
+        <input id="sc-target" inputmode="decimal" autocomplete="off" placeholder="°F" /></div>
+      <div><label for="sc-tol">± tolerance, °F</label>
+        <input id="sc-tol" inputmode="decimal" autocomplete="off" value="3" /></div>
+    </div>
     <div class="row">
       <button id="sc-calc" class="primary" type="button">Calculate</button>
-      <button id="sc-clear" type="button">Clear data</button>
+      <button id="sc-clear" type="button">Clear</button>
     </div>
     <p id="sc-error" class="error" role="alert" hidden></p>
-    <label for="sc-actual">Actual Subcooling</label>
-    <output id="sc-actual" class="result" aria-live="polite"></output>
-    <label for="sc-range">Acceptable range</label>
-    <output id="sc-range" class="result" aria-live="polite"></output>
-    <label for="sc-verdict">Is charge correct?</label>
+    <p id="sc-note" class="warn" hidden></p>
+    <label>Subcooling</label>
+    <output id="sc-actual" class="result big-result" aria-live="polite"></output>
     <output id="sc-verdict" class="result verdict" aria-live="polite"></output>
+    <dl id="sc-results" class="results" aria-live="polite" hidden>
+      <dt>Refrigerant</dt><dd id="sc-r-ref"></dd>
+      <dt>Pressure</dt><dd id="sc-r-psig"></dd>
+      <dt id="sc-r-sat-label">Saturation temp (bubble)</dt><dd id="sc-r-sat"></dd>
+      <dt>Liquid-line temp</dt><dd id="sc-r-line"></dd>
+    </dl>
+    <p class="note">Subcooling = bubble-point saturation temperature at the liquid pressure − measured liquid-line temperature. Compared with the entered target only; follow the equipment manufacturer's charging specification.</p>
     <nav><a class="btn" href="#menu">Main Menu</a></nav>
   </section>
 
-  <!-- Superheat (legacy Superheat screen: placeholder only, no calculation existed) -->
+  <!-- Superheat (refrigerant-aware): dew point at suction pressure -->
   <section id="screen-superheat" data-screen hidden>
     <h1>Superheat</h1>
-    <p class="note">The original app's Superheat screen contained no calculator, and none is included here.</p>
+    <div data-picker></div>
+    <label for="sh-psig">Suction pressure, psig</label>
+    <input id="sh-psig" inputmode="decimal" autocomplete="off" placeholder="gauge pressure" />
+    <label for="sh-temp">Measured suction-line temperature, °F</label>
+    <input id="sh-temp" inputmode="decimal" autocomplete="off" placeholder="°F" />
+    <div class="row">
+      <button id="sh-calc" class="primary" type="button">Calculate</button>
+      <button id="sh-clear" type="button">Clear</button>
+    </div>
+    <p id="sh-error" class="error" role="alert" hidden></p>
+    <p id="sh-note" class="warn" hidden></p>
+    <label>Superheat</label>
+    <output id="sh-actual" class="result big-result" aria-live="polite"></output>
+    <dl id="sh-results" class="results" aria-live="polite" hidden>
+      <dt>Refrigerant</dt><dd id="sh-r-ref"></dd>
+      <dt>Pressure</dt><dd id="sh-r-psig"></dd>
+      <dt>Saturation temp (dew)</dt><dd id="sh-r-sat"></dd>
+      <dt>Suction-line temp</dt><dd id="sh-r-line"></dd>
+    </dl>
+    <p class="note">Superheat = measured suction-line temperature − dew-point saturation temperature at the suction pressure. This is measured (actual) superheat. For target superheat use the equipment manufacturer's charging chart.</p>
+    <nav><a class="btn" href="#menu">Main Menu</a></nav>
+  </section>
+
+  <!-- Refrigerant PT -->
+  <section id="screen-pt" data-screen hidden>
+    <h1>Refrigerant PT</h1>
+    <div data-picker></div>
+    <h2>Pressure → temperature</h2>
+    <label for="pt-psig">Pressure, psig</label>
+    <input id="pt-psig" inputmode="decimal" autocomplete="off" placeholder="gauge pressure" />
+    <p id="pt-p-error" class="error" role="alert" hidden></p>
+    <dl id="pt-p-results" class="results" aria-live="polite"></dl>
+    <h2>Temperature → pressure</h2>
+    <label for="pt-temp">Saturation temperature, °F</label>
+    <input id="pt-temp" inputmode="decimal" autocomplete="off" placeholder="°F" />
+    <p id="pt-t-error" class="error" role="alert" hidden></p>
+    <dl id="pt-t-results" class="results" aria-live="polite"></dl>
+    <p id="pt-note" class="note"></p>
+    <details>
+      <summary>PT chart (every 5 °F)</summary>
+      <table id="pt-chart"></table>
+    </details>
     <nav><a class="btn" href="#menu">Main Menu</a></nav>
   </section>
 
@@ -81,6 +132,7 @@
     <h1>About</h1>
     <p><strong>Verbal's CFM Calculator</strong><br /><span id="about-version"></span></p>
     <p class="note">Created by Kevin Ernst for use by his service technicians. Works fully offline.</p>
+    <p class="note" id="about-dataset"></p>
     <details>
       <summary>Technical</summary>
       <pre id="about-tech"></pre>

@@ -22,3 +22,20 @@ nav { margin-top: 24px; display: flex; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; background: var(--card); padding: 12px; border-radius: 8px; }
 summary { min-height: 48px; display: flex; align-items: center; }
 [hidden] { display: none !important; }
+
+h2 { font-size: 1.1rem; margin: 22px 0 0; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; margin-top: 6px; }
+.chip { min-height: 52px; font-weight: 700; font-size: 1.1rem; }
+.chip[aria-checked="true"] { background: var(--accent); color: #0b2a1a; border-color: var(--accent); }
+.picker-label { display: block; margin-top: 10px; font-weight: 600; }
+.picker-info { margin: 6px 0 0; }
+.results { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 14px 0; padding: 12px; border-radius: 8px; background: var(--card); }
+.results:empty, .results[hidden] { display: none; }
+.results dt { opacity: .85; }
+.results dd { margin: 0; font-weight: 700; text-align: right; }
+.big-result { font-size: 2rem; min-height: 64px; }
+.warn { color: #ffd98a; font-weight: 600; }
+#pt-chart { width: 100%; border-collapse: collapse; font-size: .9rem; }
+#pt-chart th, #pt-chart td { padding: 6px 8px; text-align: right; border-bottom: 1px solid #2a6a88; }
+@media (orientation: landscape) and (max-height: 500px) { h1 { font-size: 1.2rem; } .big-result { font-size: 1.6rem; min-height: 48px; } }
