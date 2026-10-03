@@ -1,0 +1,77 @@
+name: Android build
+
+on:
+  push:
+    branches: [main, 'ccr-**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # publish a test prerelease with the APK
+
+env:
+  EXPECTED_PACKAGE: com.hotatticgames.cfmcalculator
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - name: Unit, calculation-regression and identity tests
+        run: npm test
+      - name: Web build
+        run: npm run build
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_REF_NAME: ${{ github.head_ref || github.ref_name }}
+      - name: Capacitor sync
+        run: npx cap sync android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Gradle (release APK + AAB)
+        working-directory: android
+        run: ./gradlew --no-daemon assembleRelease bundleRelease
+
+      - name: Qualify the actual APK
+        run: |
+          APK="$(ls android/app/build/outputs/apk/release/*.apk | head -1)"
+          mkdir -p out
+          cp "$APK" "out/CFM-Calculator-4.0.0-test-${GITHUB_SHA::7}.apk"
+          cp android/app/build/outputs/bundle/release/*.aab "out/CFM-Calculator-4.0.0-test-${GITHUB_SHA::7}.aab"
+          set +e
+          scripts/qualify-apk.sh "out/CFM-Calculator-4.0.0-test-${GITHUB_SHA::7}.apk" "$EXPECTED_PACKAGE" | tee out/qualification.md
+          rc=${PIPESTATUS[0]}
+          cat out/qualification.md >> "$GITHUB_STEP_SUMMARY"
+          sha256sum out/*.apk out/*.aab | tee out/SHA256SUMS.txt
+          exit $rc
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cfm-calculator-apk
+          path: out/
+          if-no-files-found: error
+
+      - name: Publish test prerelease
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v4.0.0-test.${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" out/* --prerelease --target "$GITHUB_SHA" \
+            --title "CFM Calculator 4.0.0 test build #${GITHUB_RUN_NUMBER} (${GITHUB_SHA::7})" \
+            --notes "Physical-test candidate. Debug-signed. See qualification.md. Source ${GITHUB_SHA}."

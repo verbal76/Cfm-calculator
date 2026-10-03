@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <title>Verbal's CFM Calculator</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+<main>
+  <!-- CFM (legacy Screen1, launcher screen) -->
+  <section id="screen-cfm" data-screen>
+    <h1>CFM per ton</h1>
+    <p class="note">This app will calculate the CFM per ton of the blower speed used for the data entered. Before using this app, please ensure that the manifold gas pressure is correct. Also that the filter is clean.</p>
+    <label for="btuh">Furnace rated output</label>
+    <input id="btuh" inputmode="decimal" autocomplete="off" placeholder="Rated BTU output" />
+    <label for="deltat">Supply - Return in F</label>
+    <input id="deltat" inputmode="decimal" autocomplete="off" placeholder="Delta &quot;T&quot;" />
+    <label for="spec">Your specific heat of air</label>
+    <input id="spec" inputmode="decimal" autocomplete="off" placeholder="see below" />
+    <label for="tons">System Tonnage</label>
+    <input id="tons" inputmode="decimal" autocomplete="off" placeholder="Condenser size best" />
+    <div class="row">
+      <button id="cfm-calc" class="primary" type="button">Calculate</button>
+      <button id="cfm-clear" type="button">Clear</button>
+    </div>
+    <p id="cfm-error" class="error" role="alert" hidden></p>
+    <label for="cfm-total">Total CFM</label>
+    <output id="cfm-total" class="result" aria-live="polite"></output>
+    <label for="cfm-per-ton">CFM per ton</label>
+    <output id="cfm-per-ton" class="result" aria-live="polite"></output>
+    <p class="note">1.08 is the specific heat of air (.24 btu) X the specific density of air (.075 lbs ft³) X the number of minutes per hour (to convert it to per minute). At sea level. This is the most common used number in these calculations.</p>
+    <nav><a class="btn" href="#menu">Main Menu</a></nav>
+  </section>
+
+  <!-- Menu (legacy Menu screen) -->
+  <section id="screen-menu" data-screen hidden>
+    <h1>Main Menu</h1>
+    <p class="note">Are you calculating superheat and sub cooling or CFM?</p>
+    <a class="btn big" href="#cfm">CFM</a>
+    <a class="btn big" href="#subcool">Subcool</a>
+    <a class="btn big" href="#superheat">Superheat</a>
+    <nav><a class="btn" href="#about">About</a></nav>
+  </section>
+
+  <!-- Subcool (legacy Subcool screen) -->
+  <section id="screen-subcool" data-screen hidden>
+    <h1>Subcooling</h1>
+    <label for="sc-target">Target Subcooling</label>
+    <input id="sc-target" inputmode="decimal" autocomplete="off" placeholder="What is your target Subcooling?" />
+    <label for="sc-liq">Liquid line temperature</label>
+    <input id="sc-liq" inputmode="decimal" autocomplete="off" placeholder="What is your liquid line temperature?" />
+    <label for="sc-sat">Liquid saturation temperature</label>
+    <input id="sc-sat" inputmode="decimal" autocomplete="off" placeholder="What is your liquid saturation temperature?" />
+    <label for="sc-tol">+/- of Target Subcooling is acceptable</label>
+    <input id="sc-tol" inputmode="decimal" autocomplete="off" value="3" />
+    <div class="row">
+      <button id="sc-calc" class="primary" type="button">Calculate</button>
+      <button id="sc-clear" type="button">Clear data</button>
+    </div>
+    <p id="sc-error" class="error" role="alert" hidden></p>
+    <label for="sc-actual">Actual Subcooling</label>
+    <output id="sc-actual" class="result" aria-live="polite"></output>
+    <label for="sc-range">Acceptable range</label>
+    <output id="sc-range" class="result" aria-live="polite"></output>
+    <label for="sc-verdict">Is charge correct?</label>
+    <output id="sc-verdict" class="result verdict" aria-live="polite"></output>
+    <nav><a class="btn" href="#menu">Main Menu</a></nav>
+  </section>
+
+  <!-- Superheat (legacy Superheat screen: placeholder only, no calculation existed) -->
+  <section id="screen-superheat" data-screen hidden>
+    <h1>Superheat</h1>
+    <p class="note">The original app's Superheat screen contained no calculator, and none is included here.</p>
+    <nav><a class="btn" href="#menu">Main Menu</a></nav>
+  </section>
+
+  <!-- About / technical -->
+  <section id="screen-about" data-screen hidden>
+    <h1>About</h1>
+    <p><strong>Verbal's CFM Calculator</strong><br /><span id="about-version"></span></p>
+    <p class="note">Created by Kevin Ernst for use by his service technicians. Works fully offline.</p>
+    <details>
+      <summary>Technical</summary>
+      <pre id="about-tech"></pre>
+    </details>
+    <div class="row">
+      <button id="copy-diag" class="primary" type="button">Copy Diagnostics</button>
+    </div>
+    <p id="copy-status" class="note" role="status"></p>
+    <nav><a class="btn" href="#menu">Main Menu</a></nav>
+  </section>
+</main>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
