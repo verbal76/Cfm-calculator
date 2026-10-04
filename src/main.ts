@@ -145,8 +145,11 @@ async function copyDiagnostics() {
   }
 }
 
-// ---- Navigation: hash routes so the Android back button steps through screens.
+// ---- Navigation. In-app links push history entries tagged with their depth below the Main Menu, so that
+//  * Android Back (handled natively in MainActivity -> WebView history) returns to the previous screen and, from the Main Menu, closes the app;
+//  * "Main Menu" returns straight to the root instead of piling up history (history.go(-depth)).
 const SCREENS = ['cfm', 'menu', 'subcool', 'superheat', 'pt', 'about'];
+const depthNow = () => ((history.state as { d?: number } | null)?.d ?? 0);
 function route() {
   const name = SCREENS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'menu';
   document.querySelectorAll<HTMLElement>('[data-screen]').forEach((s) => { s.hidden = s.id !== `screen-${name}`; });
@@ -155,6 +158,21 @@ function route() {
   if (name === 'about') void renderAbout();
   if (name === 'pt') renderPt();
 }
+function go(name: string) {
+  const d = depthNow();
+  if (name === 'menu' && d > 0) { history.go(-d); return; }       // popstate -> route()
+  if (name === 'menu' && !location.hash) return;                  // already at the root
+  history.pushState({ d: d + 1 }, '', `#${name}`);
+  route();
+}
+document.addEventListener('click', (e) => {
+  const a = (e.target as Element | null)?.closest('a[href^="#"]');
+  if (!a) return;
+  e.preventDefault();
+  go((a.getAttribute('href') as string).slice(1));
+});
+window.addEventListener('popstate', route);
+route();
 
 $('cfm-calc').addEventListener('click', runCfm);
 $('cfm-clear').addEventListener('click', clearCfm);
@@ -167,7 +185,6 @@ document.querySelectorAll<HTMLElement>('[data-picker]').forEach(mountPicker);
 // A different refrigerant invalidates displayed results.
 onRefrigerantChange(() => { clearSubcoolResults(); clearSuperheatResults(); renderPt(); });
 $('copy-diag').addEventListener('click', () => void copyDiagnostics());
-window.addEventListener('hashchange', route);
 route();
 
 // ---- Start-up: the studio card (src/splash.ts) is shown on cold launch; this work runs behind it, so it adds no waiting time.

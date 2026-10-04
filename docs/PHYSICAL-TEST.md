@@ -45,7 +45,7 @@ Test builds use an ephemeral debug key: **uninstall any previous test build firs
 ## F. Errors and input handling
 27. Blank pressure → "Enter … pressure (psig)." Letters → "must be a number." Negative → "at or above 0 psig". 9999 psig → "outside the supported range … (0 to N psig)". Line temp 9999 → "not a realistic line temperature". No NaN, no crash.
 28. Keyboard: numeric keypad appears on every numeric field; focused field stays visible; Done/Back closes it.
-29. Back button steps tool → Main Menu → exits.
+29. Back button: from a tool screen (CFM, Subcooling, Superheat, Refrigerant PT, About) Back returns to the Main Menu; Back at the Main Menu closes the app. **Known issue in v6 only:** Back closed the app from every screen (Capacitor 8 core has no Back handling); fixed in the next build.
 30. Rotate to landscape and back: layout intact, no lost inputs.
 
 ## G. Offline and diagnostics

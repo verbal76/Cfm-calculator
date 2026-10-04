@@ -307,10 +307,8 @@ if 'tool' in txt0.lower() or 'CFM' in txt0:
             t3 = screen_text()
         else:
             t3 = t2
-        if 'tool' in t3.lower():
-            check('back navigation returns to the Main Menu (OCR)', True)
-        else:
-            say(f'INFO: could not confirm the back navigation by OCR: {t3.strip()[:80]!r}')
+        # Android Back must return from a tool screen to the Main Menu (MainActivity maps Back to WebView history); in v6 Back closed the app.
+        check('Android Back from the CFM screen returns to the Main Menu instead of closing the app (OCR)', 'tool' in t3.lower(), t3.strip()[:60])
     else:
         say('INFO: could not open CFM by keyboard focus; interactive CFM steps not verified')
 else:

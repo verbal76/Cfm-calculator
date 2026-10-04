@@ -26,6 +26,22 @@ describe('package identity cannot drift', () => {
   });
 });
 
+describe('Android Back button (Capacitor 8 core does not handle it)', () => {
+  const act = read(`android/app/src/main/java/${PKG.replaceAll('.', '/')}/MainActivity.java`);
+  it('MainActivity maps Back to WebView history and only then lets Android close the app', () => {
+    expect(act).toContain('OnBackPressedCallback');
+    expect(act).toContain('canGoBack()');
+    expect(act).toContain('goBack()');
+    expect(act).toMatch(/setEnabled\(false\)/);
+  });
+  it('the web app tags history entries and leaves no stacked history', () => {
+    const m = read('src/main.ts');
+    expect(m).toContain('history.pushState');
+    expect(m).toContain("addEventListener('popstate'");
+    expect(m).toContain('history.go(-d)');
+  });
+});
+
 describe('Android policy guards', () => {
   const vars = read('android/variables.gradle');
   const num = (k: string) => Number(new RegExp(`${k}\\s*=\\s*(\\d+)`).exec(vars)?.[1]);

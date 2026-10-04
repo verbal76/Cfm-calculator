@@ -33,3 +33,9 @@
 Subcooling now takes pressure + refrigerant (bubble point); Superheat is a real calculator (dew point); new Refrigerant PT tool; shared refrigerant picker;
 launch screen is the Main Menu. Historical manual-saturation Subcooling and its original strings remain in `src/calc.ts` as characterization tests only; the UI wording
 changed to neutral "Below / Within / Above target range". Target superheat intentionally not implemented (see docs/REFRIGERANT-DATA.md). Version 4.1.0 / code 5.
+
+## Android Back button (found by the emulator smoke test of v6)
+Capacitor 8 core contains no Back-button handling (it is in the optional `@capacitor/app` plugin, not used here), so in v6 Back closed the app from every screen. Earlier notes
+claiming Back stepped through screens were wrong for v6. Fixed in the v7 candidate without a new dependency: `MainActivity` registers an `OnBackPressedCallback` that calls
+`WebView.goBack()` while history exists and otherwise lets Android close the app; the web app tags history entries (`history.pushState({d})`) and "Main Menu" uses
+`history.go(-d)`, so there is never stacked history. Verified in the browser check (`scripts/splash_check.py`) and the emulator smoke test.
