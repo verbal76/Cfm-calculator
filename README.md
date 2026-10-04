@@ -9,3 +9,5 @@ Capacitor 8 / Android API 36, fully offline. Tools: CFM, refrigerant-aware Subco
 npm ci && npm run check   # typecheck, lint, tests, web build
 npx cap sync android      # then ./gradlew assembleRelease in android/ (CI does this)
 ```
+
+**Releases:** public versions are sequential integers (`CFM Calculator v5`, `v6`, ...). See `docs/RELEASING.md` and `CLAUDE.md`. Install the file named in the Latest release.

@@ -22,6 +22,15 @@ export interface NativeInfo {
 const BuildInfo = registerPlugin<{ get(): Promise<NativeInfo> }>('BuildInfo');
 
 export const APP_NAME = "Verbal's CFM Calculator";
+
+/**
+ * Public product version label. By project rule (docs/RELEASING.md) versionCode IS the public version number,
+ * so the label is derived from it and never has to be inferred from technical metadata. "-dev" marks non-release builds.
+ */
+export function publicVersionLabel(versionCode: number | undefined, versionName: string | undefined): string {
+  if (versionCode === undefined) return 'unavailable';
+  return `v${versionCode}${versionName?.endsWith('-dev') ? '-dev' : ''}`;
+}
 export const FRAMEWORK = 'Capacitor 8 (web UI) on native Android';
 
 export async function loadNativeInfo(): Promise<NativeInfo | null> {
@@ -40,11 +49,12 @@ export function sourceInfo() {
 /** Plain-text diagnostics. Contains no personal data, secrets or clipboard contents. */
 export function formatDiagnostics(n: NativeInfo | null, src = sourceInfo(), now = new Date()): string {
   const lines = [
-    `Application: ${APP_NAME}`,
+    `Product: ${APP_NAME}`,
+    `Version: ${publicVersionLabel(n?.versionCode, n?.versionName)}`,
     `Package: ${n?.packageName ?? 'unavailable (not running natively)'}`,
-    `Version: ${n?.versionName ?? 'unavailable'}`,
-    `Version code: ${n?.versionCode ?? 'unavailable'}`,
-    `Source SHA: ${src.sha}`,
+    `Android versionCode: ${n?.versionCode ?? 'unavailable'}`,
+    `Android versionName: ${n?.versionName ?? 'unavailable'}`,
+    `Source commit: ${src.sha}`,
     `Source branch: ${src.branch}`,
     `Built: ${src.builtAt}`,
     `Framework: ${FRAMEWORK}`,

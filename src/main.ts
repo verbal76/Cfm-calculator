@@ -6,7 +6,7 @@ import {
   calculateSubcoolingFromPressure, calculateSuperheat, lookupFromPressure, lookupFromTemperature,
   SUBCOOL_TOLERANCE_DEFAULT, VERDICT_TEXT, type FieldError,
 } from './refrigerant/superheatSubcool';
-import { APP_NAME, formatDiagnostics, loadNativeInfo, sourceInfo, type NativeInfo } from './buildinfo';
+import { APP_NAME, formatDiagnostics, loadNativeInfo, publicVersionLabel, sourceInfo, type NativeInfo } from './buildinfo';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const val = (id: string) => $<HTMLInputElement>(id).value;
@@ -116,10 +116,12 @@ let native: NativeInfo | null = null;
 async function renderAbout() {
   native ??= await loadNativeInfo();
   const src = sourceInfo();
-  $('about-version').textContent = native ? `Version ${native.versionName} (build ${native.versionCode})` : 'Version unavailable';
+  $('about-version').textContent = native ? `Version ${publicVersionLabel(native.versionCode, native.versionName)}` : 'Version unavailable';
   $('about-tech').textContent = [
+    `Version: ${publicVersionLabel(native?.versionCode, native?.versionName)}`,
     `Package: ${native?.packageName ?? 'unavailable'}`,
-    `Source SHA: ${src.sha}`, `Source branch: ${src.branch}`, `Built: ${src.builtAt}`,
+    `Android versionCode: ${native?.versionCode ?? 'unavailable'}`,
+    `Source commit: ${src.sha}`, `Source branch: ${src.branch}`, `Built: ${src.builtAt}`,
     `Android: ${native ? `${native.androidRelease} (API ${native.androidApi})` : 'unavailable'}`,
     `Target SDK: ${native?.targetSdk ?? 'unavailable'}`,
     `Build type: ${native?.buildType ?? 'unavailable'}`,

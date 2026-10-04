@@ -1,4 +1,4 @@
-# Physical-device test checklist (version 4.1.0, versionCode 5)
+# Physical-device test checklist (CFM Calculator v5 = engineering version 4.1.0, versionCode 5; later builds show their own vN)
 
 Expected values come from the bundled dataset `cfm-pt-1.0+coolprop-8.0.0+fb20caa09e` (CoolProp reference EOS). They are **not yet compared to manufacturer charts**
 (see docs/REFRIGERANT-DATA.md); where your own chart differs, note which refrigerant and by how much. Values are shown to 1 decimal as the app displays them.
@@ -50,7 +50,7 @@ Test builds use an ephemeral debug key: **uninstall any previous test build firs
 
 ## G. Offline and diagnostics
 31. Turn on airplane mode; repeat items 7, 19 and 23: identical results.
-32. About: version **4.1.0 (build 5)**, package com.hotatticgames.cfmcalculator, target SDK 36; "Refrigerant PT dataset: cfm-pt-1.0+coolprop-8.0.0+fb20caa09e".
+32. About: for the v5 binary, version **4.1.0 (build 5)** (v6 and later show "v6", "v7"...), package com.hotatticgames.cfmcalculator, target SDK 36; "Refrigerant PT dataset: cfm-pt-1.0+coolprop-8.0.0+fb20caa09e".
 33. Copy Diagnostics, paste anywhere: plain text, contains "Refrigerant dataset: cfm-pt-1.0+coolprop-8.0.0+fb20caa09e", no personal data.
 34. Force-stop and relaunch: refrigerant choice is remembered; no entered values persist (by design).
 35. Report any value differing from your own PT chart by more than 1 psi / 1°F (R-454B bubble may read ≈ 0.4°F low versus a manufacturer table).

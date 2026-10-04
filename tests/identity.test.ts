@@ -40,6 +40,32 @@ describe('Android policy guards', () => {
     expect(perms).toEqual(['android.permission.INTERNET']); // only the removal marker
   });
   it('version code is above the legacy v3.0 (code 3)', () => {
-    expect(Number(/versionCode (\d+)/.exec(read('android/app/build.gradle'))?.[1])).toBeGreaterThan(3);
+    expect(Number(read('release/VERSION').trim())).toBeGreaterThan(3);
+  });
+});
+
+describe('public release convention (docs/RELEASING.md)', () => {
+  const version = read('release/VERSION').trim();
+  it('release/VERSION is a single integer greater than the last delivered build (5)', () => {
+    expect(version).toMatch(/^[0-9]+$/);
+    expect(Number(version)).toBeGreaterThanOrEqual(6);
+  });
+  it('gradle derives versionCode/versionName from release/VERSION only', () => {
+    const g = read('android/app/build.gradle');
+    expect(g).toContain("file('../../release/VERSION')");
+    expect(g).toMatch(/versionCode publicVersion/);
+    expect(g).toMatch(/versionName isReleaseBuild \? "\$\{publicVersion\}" : "\$\{publicVersion\}-dev"/);
+  });
+  it('workflow publishes only from vN tags, titled "CFM Calculator vN", as Latest, with vN filenames', () => {
+    const w = read('.github/workflows/android.yml');
+    expect(w).toContain("tags: ['v[0-9]*']");
+    expect(w).toContain('--title "${PRODUCT} v${VERSION}"');
+    expect(w).toContain('--latest');
+    expect(w).toContain('NAME="${FILE_PREFIX}-v${VERSION}"');
+    expect(w).not.toMatch(/--prerelease/);
+  });
+  it('docs and CLAUDE.md state the convention', () => {
+    expect(read('CLAUDE.md')).toMatch(/CFM Calculator v<N>/);
+    expect(read('docs/RELEASING.md')).toMatch(/single sequential integer/);
   });
 });

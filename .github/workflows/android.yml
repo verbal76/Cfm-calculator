@@ -1,22 +1,52 @@
 name: Android build
 
+# Public release convention: docs/RELEASING.md
+#  * branch pushes / PRs  -> CI build only (artifact "CFM-Calculator-CI-<sha>.apk", labelled "-dev"); NOTHING is published
+#  * push of a tag vN     -> release build, qualification, GitHub Release "CFM Calculator vN" marked Latest
+#  * manual "promote"     -> re-label an already-verified release binary as vN WITHOUT rebuilding it
+
 on:
   push:
     branches: [main, 'ccr-**']
+    tags: ['v[0-9]*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      promote_version:
+        description: 'Public version number to publish, e.g. 5'
+        required: false
+      promote_from_tag:
+        description: 'Existing verified release tag whose exact binary becomes that version'
+        required: false
 
 permissions:
-  contents: write   # publish a test prerelease with the APK
+  contents: write   # create releases
 
 env:
   EXPECTED_PACKAGE: com.hotatticgames.cfmcalculator
+  PRODUCT: CFM Calculator
+  FILE_PREFIX: CFM-Calculator
 
 jobs:
   build:
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve public version
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < release/VERSION)"
+          [[ "$VERSION" =~ ^[0-9]+$ ]] || { echo "release/VERSION must be a single integer"; exit 1; }
+          IS_RELEASE=false
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+$ ]] || { echo "Release tags must look like v6 (got $GITHUB_REF_NAME)"; exit 1; }
+            [ "${GITHUB_REF_NAME#v}" = "$VERSION" ] || { echo "Tag $GITHUB_REF_NAME does not match release/VERSION ($VERSION)"; exit 1; }
+            IS_RELEASE=true
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "IS_RELEASE=$IS_RELEASE" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
@@ -44,39 +74,109 @@ jobs:
 
       - name: Gradle (release APK + AAB)
         working-directory: android
-        run: ./gradlew --no-daemon assembleRelease bundleRelease
+        run: ./gradlew --no-daemon assembleRelease bundleRelease -PreleaseBuild="$IS_RELEASE"
 
       - name: Qualify the actual APK
         run: |
-          VERSION="$(sed -n 's/.*versionName "\([^"]*\)".*/\1/p' android/app/build.gradle)"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          set -uo pipefail
+          if [ "$IS_RELEASE" = true ]; then NAME="${FILE_PREFIX}-v${VERSION}"; else NAME="${FILE_PREFIX}-CI-${GITHUB_SHA::7}"; fi
+          echo "NAME=$NAME" >> "$GITHUB_ENV"
           DATASET="$(node -p "require('./src/refrigerant/dataset.json').dataset")"
           echo "DATASET=$DATASET" >> "$GITHUB_ENV"
-          NAME="CFM-Calculator-${VERSION}-test-${GITHUB_SHA::7}"
-          APK="$(ls android/app/build/outputs/apk/release/*.apk | head -1)"
           mkdir -p out
-          cp "$APK" "out/$NAME.apk"
+          cp "$(ls android/app/build/outputs/apk/release/*.apk | head -1)" "out/$NAME.apk"
           cp android/app/build/outputs/bundle/release/*.aab "out/$NAME.aab"
           set +e
-          { echo "Refrigerant dataset: $DATASET"; echo; scripts/qualify-apk.sh "out/$NAME.apk" "$EXPECTED_PACKAGE"; } | tee out/qualification.md
+          { echo "Product: $PRODUCT  Public version: v${VERSION}$([ "$IS_RELEASE" = true ] || echo -dev)"; echo "Source commit: $GITHUB_SHA"; echo "Refrigerant dataset: $DATASET"; echo; scripts/qualify-apk.sh "out/$NAME.apk" "$EXPECTED_PACKAGE"; } | tee out/qualification.md
           rc=${PIPESTATUS[0]}
           cat out/qualification.md >> "$GITHUB_STEP_SUMMARY"
-          sha256sum out/*.apk out/*.aab | tee out/SHA256SUMS.txt
+          (cd out && sha256sum "$NAME.apk" "$NAME.aab" | tee SHA256SUMS.txt)
           exit $rc
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: cfm-calculator-apk
+          name: ${{ env.IS_RELEASE == 'true' && format('{0}-v{1}', 'CFM-Calculator', env.VERSION) || 'CFM-Calculator-CI' }}
           path: out/
           if-no-files-found: error
 
-      - name: Publish test prerelease
-        if: github.event_name != 'pull_request'
+      - name: Publish GitHub Release (tags only)
+        if: env.IS_RELEASE == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="v${VERSION}-test.${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" out/* --prerelease --target "$GITHUB_SHA" \
-            --title "CFM Calculator ${VERSION} test build #${GITHUB_RUN_NUMBER} (${GITHUB_SHA::7})" \
-            --notes "Physical-test candidate. Debug-signed (ephemeral key: uninstall the previous test build first). Refrigerant dataset ${DATASET}. See qualification.md. Source ${GITHUB_SHA}."
+          set -euo pipefail
+          APK_SHA="$(sha256sum "out/$NAME.apk" | cut -d' ' -f1)"
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          # ${PRODUCT} v${VERSION}
+
+          **Android - install this file:** \`${NAME}.apk\`
+
+          Next version will be **v$((VERSION + 1))**.
+
+          Debug-signed test key that changes per build: uninstall the previous build before installing.
+
+          ## Technical details (engineering only)
+          - Source commit: ${GITHUB_SHA}
+          - Android versionCode: ${VERSION} (equals the public version)
+          - Package: ${EXPECTED_PACKAGE}
+          - APK SHA-256: ${APK_SHA}
+          - Refrigerant dataset: ${DATASET}
+          - Actions run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          - Full qualification output: qualification.md; checksums: SHA256SUMS.txt
+          EOF
+          gh release create "v${VERSION}" out/* --latest --target "$GITHUB_SHA" \
+            --title "${PRODUCT} v${VERSION}" --notes-file "$RUNNER_TEMP/notes.md"
+
+  promote:
+    # Re-label an already-built, already-qualified binary as the next public version without rebuilding it.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Promote existing release binary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          N: ${{ inputs.promote_version }}
+          FROM: ${{ inputs.promote_from_tag }}
+        run: |
+          set -euo pipefail
+          [[ "$N" =~ ^[0-9]+$ ]] || { echo "promote_version must be an integer"; exit 1; }
+          [ -n "$FROM" ] || { echo "promote_from_tag is required"; exit 1; }
+          if gh release view "v$N" >/dev/null 2>&1; then echo "Release v$N already exists; versions are never reused"; exit 1; fi
+          mkdir dl out
+          gh release download "$FROM" -D dl
+          APK="$(ls dl/*.apk)"; AAB="$(ls dl/*.aab)"
+          WANT="$(grep '\.apk$' dl/SHA256SUMS.txt | cut -d' ' -f1)"
+          HAVE="$(sha256sum "$APK" | cut -d' ' -f1)"
+          [ "$WANT" = "$HAVE" ] || { echo "APK checksum mismatch: $WANT vs $HAVE"; exit 1; }
+          SRC="$(gh api "repos/$GITHUB_REPOSITORY/commits/$FROM" --jq .sha)"
+          NAME="${FILE_PREFIX}-v${N}"
+          cp "$APK" "out/$NAME.apk"; cp "$AAB" "out/$NAME.aab"; cp dl/qualification.md out/qualification.md
+          (cd out && sha256sum "$NAME.apk" "$NAME.aab" > SHA256SUMS.txt)
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          # ${PRODUCT} v${N}
+
+          **Android - install this file:** \`${NAME}.apk\`
+
+          Next version will be **v$((N + 1))**.
+
+          Debug-signed test key that changes per build: uninstall any previous test build before installing.
+
+          ## Technical details (engineering only)
+          - Binary promoted UNCHANGED (not rebuilt) from release \`${FROM}\`; identical bytes, SHA-256 verified against that release.
+          - Source commit: ${SRC}
+          - APK SHA-256: ${HAVE}
+          - Inside this older build the app shows its engineering version "4.1.0 (build ${N})" in About; builds from v6 onward show "v6", "v7", ...
+          - Android versionCode: ${N}
+          - Package: ${EXPECTED_PACKAGE}
+          - Original release: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${FROM}
+          - Full qualification output: qualification.md; checksums: SHA256SUMS.txt
+          EOF
+          gh release create "v${N}" out/* --latest --target "$SRC" \
+            --title "${PRODUCT} v${N}" --notes-file "$RUNNER_TEMP/notes.md"
+          # Historical display titles only; tags, binaries and provenance are untouched.
+          gh release edit "$FROM" --title "${PRODUCT} v${N} (original test build, superseded by the v${N} release)" || true
+          if gh release view v4.0.0-test.1 >/dev/null 2>&1; then
+            gh release edit v4.0.0-test.1 --title "${PRODUCT} v4 (historical test build)" || true
+          fi
