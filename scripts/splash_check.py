@@ -119,6 +119,8 @@ with sync_playwright() as p:
     t_in, t_hold, t_out, t_done = (phase_time(ph, n) for n in ('in', 'hold', 'out', 'done'))
     total = (t_done - t_in) / 1000
     check('display time is about 2.5 s (2-3 s window)', 2.3 <= total <= 3.0, f'{total:.2f}s')
+    t_prep = phase_time(ph, 'prep')
+    check('logo is pre-rasterised (prep phase) before the visible fade-in starts', t_prep is not None and t_in is not None and t_prep <= t_in)
     check('phase order in -> hold -> out -> done', all(v is not None for v in (t_in, t_hold, t_out, t_done)) and t_in < t_hold < t_out < t_done)
     out_rec = next(x for x in ph if x['phase'] == 'out')
     in_rec = next(x for x in ph if x['phase'] == 'in')
@@ -175,6 +177,41 @@ with sync_playwright() as p:
     pg.wait_for_function("document.documentElement.dataset.splash === 'done'", timeout=6000)
     el = time.time() - t0
     check('missing artwork cannot strand the user (card skipped quickly)', el < 2.0 and pg.is_visible('#screen-menu'), f'{el:.2f}s')
+    c.close()
+
+
+    # ---------- slow first load of the artwork (slow cold start): the card is delayed, NEVER skipped, and still shows the full 2.5 s
+    def slow_handler(delay):
+        def handler(route):
+            time.sleep(delay)
+            route.continue_()
+        return handler
+    c = browser.new_context(viewport={'width': 390, 'height': 844})
+    pg = c.new_page()
+    pg.route('**/Hot_Attic_Games_Master_Logo_ALPHA_FINAL*.png', slow_handler(1.8))
+    pg.goto(BASE + '/', wait_until='commit')
+    pg.evaluate(OBSERVER)
+    pg.wait_for_function("document.documentElement.dataset.splash === 'done'", timeout=15000)
+    ph = pg.evaluate('window.__phases')
+    t_in, t_done = phase_time(ph, 'in'), phase_time(ph, 'done')
+    check('slow artwork load (1.8 s): the studio card is still shown (not skipped)', t_in is not None and t_done is not None)
+    if t_in is not None and t_done is not None:
+        check(f'slow artwork load: the card still stays about 2.5 s once visible ({(t_done - t_in) / 1000:.2f}s)', 2.3 <= (t_done - t_in) / 1000 <= 3.0)
+        check(f'slow artwork load: the fade-in waited for the artwork ({t_in / 1000:.1f}s after page start)', t_in / 1000 >= 1.5)
+    c.close()
+
+    # ---------- artwork that effectively never loads: gives up after the wait ceiling, user reaches the app, nothing stranded
+    c = browser.new_context(viewport={'width': 390, 'height': 844})
+    pg = c.new_page()
+    pg.route('**/Hot_Attic_Games_Master_Logo_ALPHA_FINAL*.png', slow_handler(7.0))
+    pg.goto(BASE + '/', wait_until='commit')
+    pg.evaluate(OBSERVER)          # timestamps come from inside the page: the blocking test handler stalls Python's own clock
+    pg.wait_for_function("document.documentElement.dataset.splash === 'done'", timeout=20000)
+    ph = pg.evaluate('window.__phases')
+    t_done = phase_time(ph, 'done')
+    shown = phase_time(ph, 'in') is not None
+    check(f'artwork that never loads: card gives up after the wait ceiling and the app is reachable ({t_done / 1000:.1f}s in-page, shown={shown})',
+          t_done is not None and t_done / 1000 < 3.6 and not shown and pg.evaluate("getComputedStyle(document.querySelector('main')).visibility") == 'visible')
     c.close()
 
     # ---------- failure: JavaScript never runs -> CSS-only failsafe removes the card

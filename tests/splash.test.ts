@@ -47,6 +47,7 @@ describe('studio card timeline', () => {
     const view: SplashView = {
       setPhase: (phase) => log.push({ phase, at: Date.now() }),
       imageReady: () => Promise.resolve(imageOk),
+      prepare: () => Promise.resolve(),
     };
     return { view, log };
   }
@@ -56,6 +57,8 @@ describe('studio card timeline', () => {
     return p;
   };
   const t = (log: { phase: SplashPhase; at: number }[], ph: SplashPhase) => log.find((x) => x.phase === ph)!.at - log[0].at;
+  /** ms from `start` (the moment the timeline was started) to the phase change */
+  const since = (start: number, log: { phase: SplashPhase; at: number }[], ph: SplashPhase) => log.find((x) => x.phase === ph)!.at - start;
 
   it('nominal display time is 2.5 s and inside the 2-3 s requirement', () => {
     expect(nominalDurationMs()).toBe(2500);
@@ -111,8 +114,46 @@ describe('studio card timeline', () => {
     expect(out.totalMs).toBeLessThanOrEqual(SPLASH.fadeOutMs + 50);
   });
 
+  it('a SLOW decode delays the card but never skips it (regression: 800 ms ceiling silently skipped the studio card)', async () => {
+    const log: { phase: SplashPhase; at: number }[] = [];
+    const view: SplashView = {
+      setPhase: (phase) => log.push({ phase, at: Date.now() }),
+      imageReady: () => new Promise((r) => setTimeout(() => r(true), 1800)),   // slow cold start
+      prepare: () => Promise.resolve(),
+    };
+    const start = Date.now();
+    const out = await run(view, () => Promise.resolve());
+    expect(out.reason).toBe('shown');
+    expect(log.map((x) => x.phase)).toEqual(['in', 'hold', 'out', 'done']);
+    expect(Math.abs(since(start, log, 'in') - 1800)).toBeLessThanOrEqual(5);
+    expect((out as { totalMs: number }).totalMs).toBe(2500);                  // the visible window is still the full 2.5 s
+  });
+
+  it('first-paint work happens before the visible clock: a slow prepare does not shorten the visible 2.5 s', async () => {
+    const log: { phase: SplashPhase; at: number }[] = [];
+    const view: SplashView = {
+      setPhase: (phase) => log.push({ phase, at: Date.now() }),
+      imageReady: () => Promise.resolve(true),
+      prepare: () => new Promise<void>((r) => setTimeout(r, 500)),             // slow first raster/upload
+    };
+    const start = Date.now();
+    const out = await run(view, () => Promise.resolve());
+    expect(Math.abs(since(start, log, 'in') - 500)).toBeLessThanOrEqual(5);
+    expect(Math.abs(since(start, log, 'done') - 3000)).toBeLessThanOrEqual(5);
+    expect((out as { totalMs: number }).totalMs).toBe(2500);
+  });
+
+  it('a prepare step that never resolves cannot stall the card', async () => {
+    const log: { phase: SplashPhase; at: number }[] = [];
+    const view: SplashView = { setPhase: (phase) => log.push({ phase, at: Date.now() }), imageReady: () => Promise.resolve(true), prepare: () => new Promise(() => undefined) };
+    const start = Date.now();
+    await run(view, () => Promise.resolve());
+    expect(Math.abs(since(start, log, 'in') - SPLASH.prepareMaxMs)).toBeLessThanOrEqual(5);
+    expect(log[log.length - 1].phase).toBe('done');
+  });
+
   it('artwork that never finishes decoding is abandoned after the image wait', async () => {
-    const view: SplashView = { setPhase: () => undefined, imageReady: () => new Promise(() => undefined) };
+    const view: SplashView = { setPhase: () => undefined, imageReady: () => new Promise(() => undefined), prepare: () => Promise.resolve() };
     const out = await run(view, () => Promise.resolve());
     expect(out.reason).toBe('image-unavailable');
     expect(out.totalMs).toBeLessThanOrEqual(SPLASH.imageWaitMs + SPLASH.fadeOutMs + 50);

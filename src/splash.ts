@@ -11,7 +11,7 @@
  * This file holds only the timeline so it can be unit-tested without a DOM. App initialisation runs behind the card.
  */
 
-export type SplashPhase = 'in' | 'hold' | 'out' | 'done';
+export type SplashPhase = 'prep' | 'in' | 'hold' | 'out' | 'done';
 
 export const SPLASH = {
   /** logo fades in (CSS transition must match) */
@@ -22,8 +22,11 @@ export const SPLASH = {
   fadeOutMs: 400,
   /** absolute ceiling for the card's total display time (fade-in start to fade-out end) */
   hardCapMs: 3000,
-  /** how long to wait for the artwork to decode before giving up and skipping the card */
-  imageWaitMs: 800,
+  /** how long to wait for the artwork to decode before giving up and skipping the card. The card is a studio requirement, so this is
+   *  generous: a slow cold start (low-end phone, software rendering) must delay the card, never silently skip it. */
+  imageWaitMs: 2500,
+  /** ceiling for the pre-rasterise step (two animation frames normally take ~30 ms) */
+  prepareMaxMs: 600,
 } as const;
 
 /** Nominal total display time: 2.5 s. */
@@ -33,6 +36,11 @@ export interface SplashView {
   setPhase(phase: SplashPhase): void;
   /** resolves true when the artwork is decoded and can be shown, false if it cannot be shown */
   imageReady(): Promise<boolean>;
+  /**
+   * Paint the artwork at (near) zero opacity and wait for the frames that rasterise and upload it, so the first visible frame of
+   * the fade-in is not delayed by first-paint work. The card's visible clock starts only after this resolves.
+   */
+  prepare(): Promise<void>;
 }
 
 export interface Timers {
@@ -76,6 +84,8 @@ export async function runSplashTimeline(view: SplashView, init: () => Promise<un
     return { reason: 'image-unavailable', totalMs: timers.now() - t0 };
   }
 
+  await Promise.race([view.prepare().catch(() => undefined), settle(cfg.prepareMaxMs, timers)]);
+
   const tIn = timers.now();
   view.setPhase('in');
   await settle(cfg.fadeInMs, timers);
@@ -112,6 +122,10 @@ export function startDomSplash(init: () => Promise<unknown>): Promise<SplashOutc
   const img = document.getElementById('hag-splash-img') as HTMLImageElement | null;
   const view: SplashView = {
     setPhase: (p) => { root.dataset.splash = p; },
+    prepare: () => new Promise<void>((resolve) => {
+      root.dataset.splash = 'prep';       // logo at ~1% opacity: rasterised and uploaded while still effectively invisible
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }),
     imageReady: () => {
       if (!img) return Promise.resolve(false);
       if (typeof img.decode === 'function') return img.decode().then(() => img.naturalWidth > 0, () => false);

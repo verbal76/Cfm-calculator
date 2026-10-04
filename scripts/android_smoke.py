@@ -317,6 +317,7 @@ else:
     say('INFO: OCR unavailable or inconclusive; interactive CFM steps not verified (the card/order/resume/crash checks above are independent of this)')
 
 # 3. background / resume must NOT replay the card
+pid_before = shell(f'pidof {PKG}').strip()
 shell('input keyevent KEYCODE_HOME')
 time.sleep(2.0)
 t0 = time.time()
@@ -324,10 +325,16 @@ subprocess.Popen(['adb', 'shell', f'monkey -p {PKG} -c android.intent.category.L
 fr = capture('resume', 5.0, t0)
 say(f'frames[resume]: {describe(fr)}')
 resume_text = screen_text()
+pid_after = shell(f'pidof {PKG}').strip()
 max_fire = max((m['fire'] for _, _, m in fr), default=0)
-say(f'- resume: max logo-colour fraction {max_fire:.4f}; ocr: {resume_text.strip()[:80]!r}')
+say(f'- resume: pid before={pid_before or "?"} after={pid_after or "?"}; max logo-colour fraction {max_fire:.4f}; ocr: {resume_text.strip()[:80]!r}')
 app_visible = any(k in resume_text.lower() for k in ('tool', 'cfm', 'per ton', 'subcooling'))
-check('background/resume does not replay the studio card (no logo frames; app content visible)', not any(c == 'card' for _, c, _ in fr) and max_fire < 0.004 and app_visible)
+if pid_before and pid_after and pid_before != pid_after:
+    # The OS restarted the app process while it was in the background (this emulator is small and its GPU emulation logs errors):
+    # a relaunch after process death is a legitimate cold start, which is documented to show the card. Not a replay, so not testable here.
+    warn('the OS restarted the app process during the background step, so this launch was a cold start; the resume/no-replay check is not applicable in this run')
+else:
+    check('background/resume does not replay the studio card (same process; no logo frames; app content visible)', not any(c == 'card' for _, c, _ in fr) and max_fire < 0.004 and app_visible)
 check('resume shows no white flash', not any(c == 'WHITE' for _, c, _ in fr))
 
 # 4. full close then cold launch: card appears again

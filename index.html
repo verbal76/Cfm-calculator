@@ -22,6 +22,7 @@
       animation: hag-card-failsafe 1ms linear 4.5s forwards;
     }
     #hag-splash img { width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 400ms ease; user-select: none; -webkit-user-drag: none; }
+    html[data-splash="prep"] #hag-splash img { opacity: .01; }
     html[data-splash="in"] #hag-splash img, html[data-splash="hold"] #hag-splash img, html[data-splash="out"] #hag-splash img { opacity: 1; }
     html[data-splash="out"] #hag-splash { opacity: 0; transition: opacity 400ms ease; pointer-events: none; }
     html[data-splash="done"] #hag-splash, html[data-splash="skip"] #hag-splash { display: none; }
