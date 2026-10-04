@@ -65,6 +65,16 @@ describe('public release convention (docs/RELEASING.md)', () => {
     expect(w).not.toMatch(/--prerelease(?!=false)/);
     expect(w).toContain('release/deliver');
   });
+  it('owner-facing release naming: Verbal-CFM-Calculator-vN.apk titled "Verbal\'s CFM Calculator vN"', () => {
+    const w = read('.github/workflows/android.yml');
+    expect(w).toContain('FILE_PREFIX: Verbal-CFM-Calculator');
+    expect(w).toContain('PRODUCT: "Verbal\'s CFM Calculator"');
+    expect(read('CLAUDE.md')).toContain('Verbal-CFM-Calculator-v<N>.apk');
+    expect(read('docs/RELEASING.md')).toContain('Verbal-CFM-Calculator-v<N>.apk');
+  });
+  it('a one-time promotion request is not left behind to re-publish v5', () => {
+    expect(() => read('release/promote.json')).toThrow();
+  });
   it('docs and CLAUDE.md state the convention', () => {
     expect(read('CLAUDE.md')).toMatch(/CFM Calculator v<N>/);
     expect(read('docs/RELEASING.md')).toMatch(/single sequential integer/);

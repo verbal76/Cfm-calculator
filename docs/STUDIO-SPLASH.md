@@ -28,4 +28,4 @@ It is used byte-for-byte (the build copies it unmodified; Vite only renames it w
 * Not covered by automation (needs a phone): the Android system-splash-to-card handoff and real device safe areas. See docs/PHYSICAL-TEST.md.
 
 ## Version
-Ships in the next native build (CFM Calculator v6). No standalone release was published for it.
+First shipped in Verbal's CFM Calculator v6 (`Verbal-CFM-Calculator-v6.apk`).

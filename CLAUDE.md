@@ -1,8 +1,9 @@
 # Instructions for Claude sessions in this repository
 
 ## Release naming is a hard rule (see docs/RELEASING.md)
-* Public version is ONE sequential integer: **CFM Calculator v5, v6, v7...** Never semver, codenames, build letters, SHAs or "final/candidate" in titles or filenames.
-* GitHub Release title = `CFM Calculator v<N>`, tag `v<N>`, file `CFM-Calculator-v<N>.apk`, and it must be the **Latest** release. Release notes start with the install file and the next version number.
+* Public version is ONE sequential integer: **Verbal's CFM Calculator v6, v7, v8...** Never semver, codenames, build letters, SHAs or "final/candidate" in titles or filenames.
+* GitHub Release title = `Verbal's CFM Calculator v<N>`, tag `v<N>`, owner-facing file **`Verbal-CFM-Calculator-v<N>.apk`** (owner-mandated name; never deliver generic names like app-release.apk or the CI artifact), and it must be the **Latest** release. Release notes start with the install file and the next version number.
+* v5 was published earlier as `CFM Calculator v5` / `CFM-Calculator-v5.apk` (tag `v4.1.0-test.3`); it is the rollback baseline and is left as published.
 * `release/VERSION` is the single source of truth (versionCode == N). Publish by pushing tag `vN` or committing `release/deliver` = N (see docs/RELEASING.md); never publish prereleases or titles named like `v4.1.0-test.3` again.
 * Never reuse a number for a different binary. Do not rebuild a verified binary just to rename it (use the workflow's promote path).
 * Whenever you deliver a new playable build, tell the owner: `CFM Calculator v<N>` and the exact filename to install, and state that the next one will be v<N+1>.
