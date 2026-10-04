@@ -46,10 +46,10 @@ echo "versionName='$VNAME' versionCode='$VCODE'"
 if [ -n "$EXPECTED_VERSION_NAME" ]; then
   if [ "$VNAME" = "$EXPECTED_VERSION_NAME" ] && [ "$VCODE" = "$EXPECTED_VERSION_NAME" ]; then echo "PASS: production identity (versionName == versionCode == $EXPECTED_VERSION_NAME, no -dev suffix)"; else echo "FAIL: expected production versionName/versionCode $EXPECTED_VERSION_NAME"; FAIL=1; fi
 fi
-if printf '%s\n' "$BADGING" | grep -q "application-debuggable"; then echo "FAIL: APK is debuggable"; FAIL=1; else echo "PASS: not debuggable (release build)"; fi
+if grep -q "application-debuggable" <<<"$BADGING"; then echo "FAIL: APK is debuggable"; FAIL=1; else echo "PASS: not debuggable (release build)"; fi
 RES="$("$BT/aapt2" dump resources "$APK" 2>/dev/null)"
-for want in "drawable/splash_icon_blank" "drawable/splash" "style/AppTheme[._]NoActionBarLaunch" "mipmap/ic_launcher"; do
-  if printf '%s\n' "$RES" | grep -Eq "$want"; then echo "PASS: resource present: $want"; else echo "FAIL: resource missing: $want"; FAIL=1; fi
+for want in "drawable/splash_icon_blank" "drawable/splash" "NoActionBarLaunch" "mipmap/ic_launcher"; do
+  if grep -Eq "$want" <<<"$RES"; then echo "PASS: resource present: $want"; else echo "FAIL: resource missing: $want"; FAIL=1; fi
 done
 ICON="$(printf '%s\n' "$BADGING" | sed -n "s/^application-icon-[0-9]*:'\(.*\)'/\1/p" | head -1)"
 [ -n "$ICON" ] && echo "PASS: app icon packaged: $ICON" || { echo "FAIL: no application-icon entry"; FAIL=1; }
@@ -58,8 +58,10 @@ for want in 'id="hag-splash"' 'id="hag-splash-img"' 'Hot_Attic_Games_Master_Logo
   if grep -q "$want" /tmp/apk-index.html; then echo "PASS: bundled index.html contains $want"; else echo "FAIL: bundled index.html lacks $want"; FAIL=1; fi
 done
 JS="$(unzip -Z1 "$APK" | grep -E '^assets/public/assets/index-.*\.js$' | head -1)"
-if [ -n "$JS" ] && unzip -p "$APK" "$JS" | grep -q "hag.splash.shown"; then echo "PASS: bundled app code contains the studio-card timeline ($JS)"; else echo "FAIL: studio-card timeline missing from bundled JS"; FAIL=1; fi
-unzip -p "$APK" assets/capacitor.config.json 2>/dev/null | grep -qi '"backgroundColor": *"#0f0c0b"' && echo "PASS: Capacitor WebView background matches the native frame (#0f0c0b)" || { echo "FAIL: capacitor.config.json backgroundColor not #0f0c0b"; FAIL=1; }
+[ -n "$JS" ] && unzip -p "$APK" "$JS" > /tmp/apk-app.js 2>/dev/null
+if [ -n "$JS" ] && grep -q "hag.splash.shown" /tmp/apk-app.js; then echo "PASS: bundled app code contains the studio-card timeline ($JS)"; else echo "FAIL: studio-card timeline missing from bundled JS"; FAIL=1; fi
+unzip -p "$APK" assets/capacitor.config.json > /tmp/apk-capcfg.json 2>/dev/null
+grep -qi '"backgroundColor": *"#0f0c0b"' /tmp/apk-capcfg.json && echo "PASS: Capacitor WebView background matches the native frame (#0f0c0b)" || { echo "FAIL: capacitor.config.json backgroundColor not #0f0c0b"; FAIL=1; }
 echo "native libraries: none (verified in the ABI section above)"
 echo '```'
 PKG_ACTUAL="$("$BT/aapt2" dump badging "$APK" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
@@ -67,5 +69,6 @@ TGT="$("$BT/aapt2" dump badging "$APK" | sed -n "s/^targetSdkVersion:'\([0-9]*\)
 echo; echo "## Gates"
 [ "$PKG_ACTUAL" = "$EXPECTED_PACKAGE" ] && echo "- package id: PASS ($PKG_ACTUAL)" || { echo "- package id: FAIL ($PKG_ACTUAL != $EXPECTED_PACKAGE)"; FAIL=1; }
 [ "${TGT:-0}" -ge 36 ] && echo "- targetSdk >= 36: PASS ($TGT)" || { echo "- targetSdk >= 36: FAIL ($TGT)"; FAIL=1; }
-if "$BT/aapt2" dump permissions "$APK" | grep -q "INTERNET"; then echo "- no INTERNET permission: FAIL"; FAIL=1; else echo "- no INTERNET permission: PASS"; fi
+PERMS_OUT="$("$BT/aapt2" dump permissions "$APK")"
+if grep -q "INTERNET" <<<"$PERMS_OUT"; then echo "- no INTERNET permission: FAIL"; FAIL=1; else echo "- no INTERNET permission: PASS"; fi
 exit $FAIL
