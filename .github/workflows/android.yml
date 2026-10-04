@@ -130,20 +130,40 @@ jobs:
 
   promote:
     # Re-label an already-built, already-qualified binary as the next public version without rebuilding it.
-    if: github.event_name == 'workflow_dispatch'
+    # Triggered by "Run workflow" (inputs) OR by a branch push when release/promote.json requests a version that does not exist yet.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/'))
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
-      - name: Promote existing release binary
+      - uses: actions/checkout@v4
+
+      - name: Read promotion request
+        id: req
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          N: ${{ inputs.promote_version }}
-          FROM: ${{ inputs.promote_from_tag }}
+          INPUT_N: ${{ inputs.promote_version }}
+          INPUT_FROM: ${{ inputs.promote_from_tag }}
         run: |
           set -euo pipefail
-          [[ "$N" =~ ^[0-9]+$ ]] || { echo "promote_version must be an integer"; exit 1; }
-          [ -n "$FROM" ] || { echo "promote_from_tag is required"; exit 1; }
-          if gh release view "v$N" >/dev/null 2>&1; then echo "Release v$N already exists; versions are never reused"; exit 1; fi
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then N="$INPUT_N"; FROM="$INPUT_FROM"
+          elif [ -f release/promote.json ]; then N="$(jq -r .version release/promote.json)"; FROM="$(jq -r .from release/promote.json)"
+          else echo "run=false" >> "$GITHUB_OUTPUT"; echo "No promotion requested."; exit 0; fi
+          [[ "$N" =~ ^[0-9]+$ ]] || { echo "version must be an integer"; exit 1; }
+          [ -n "$FROM" ] || { echo "from tag is required"; exit 1; }
+          if gh release view "v$N" >/dev/null 2>&1; then
+            echo "Release v$N already exists; versions are never reused. Nothing to do."
+            echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          { echo "run=true"; echo "n=$N"; echo "from=$FROM"; } >> "$GITHUB_OUTPUT"
+
+      - name: Promote existing release binary
+        if: steps.req.outputs.run == 'true'
+        env:
+          N: ${{ steps.req.outputs.n }}
+          FROM: ${{ steps.req.outputs.from }}
+        run: |
+          set -euo pipefail
           mkdir dl out
           gh release download "$FROM" -D dl
           APK="$(ls dl/*.apk)"; AAB="$(ls dl/*.aab)"
@@ -167,7 +187,7 @@ jobs:
           - Binary promoted UNCHANGED (not rebuilt) from release \`${FROM}\`; identical bytes, SHA-256 verified against that release.
           - Source commit: ${SRC}
           - APK SHA-256: ${HAVE}
-          - Inside this older build the app shows its engineering version "4.1.0 (build ${N})" in About; builds from v6 onward show "v6", "v7", ...
+          - Inside this older build the app shows its engineering version in About ("4.1.0 (build ${N})"); builds from v$((N + 1)) onward show "v$((N + 1))", "v$((N + 2))", ...
           - Android versionCode: ${N}
           - Package: ${EXPECTED_PACKAGE}
           - Original release: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${FROM}

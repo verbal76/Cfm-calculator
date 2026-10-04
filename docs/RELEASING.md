@@ -28,7 +28,7 @@ Rules: never reuse a number for a different binary; never overwrite a published 
 CI builds from branches/PRs are named `CFM-Calculator-CI-<sha>.apk`, say `v<N>-dev` in About, and are never published as releases.
 
 ## Re-labelling an existing verified binary (no rebuild)
-Actions → **Android build** → *Run workflow* with `promote_version=N` and `promote_from_tag=<existing tag>` downloads the exact binary, verifies its SHA-256 against
+Either Actions → **Android build** → *Run workflow* with `promote_version=N` and `promote_from_tag=<existing tag>`, or commit `release/promote.json` (`{"version": N, "from": "<tag>"}`; it is idempotent and skips if `vN` already exists). The workflow downloads the exact binary, verifies its SHA-256 against
 that release's `SHA256SUMS.txt`, republishes the identical bytes as `CFM-Calculator-vN.apk` and `CFM Calculator vN` (Latest), and retitles the old test release for display only.
 
 ## History and numbering decision
