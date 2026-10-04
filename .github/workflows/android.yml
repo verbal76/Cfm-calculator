@@ -156,35 +156,60 @@ jobs:
             --title "${PRODUCT} v${VERSION}" --notes-file "$RUNNER_TEMP/notes.md"
 
   smoke:
-    # Real install + launch of the built APK on an Android emulator (runs for release builds, or when a commit message contains [smoke]).
-    # Emulator evidence only: it is NOT a physical-device test.
+    # Real install + launch on an Android emulator. Runs for release builds (tests the freshly built APK), or when a commit message
+    # contains [smoke] (tests the PUBLISHED release asset vN). Emulator evidence only: it is NOT a physical-device test.
     needs: build
     if: needs.build.outputs.is_release == 'true' || contains(github.event.head_commit.message, '[smoke]')
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v4
+      - name: Get the APK under test
+        id: apk
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < release/VERSION)"
+          mkdir -p out
+          if [ "${{ needs.build.outputs.is_release }}" != "true" ] && gh release download "v$VERSION" -p '*.apk' -D out 2>/dev/null; then
+            echo "Testing the PUBLISHED release asset v$VERSION"
+            echo "expect=$VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "fetch=artifact" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/download-artifact@v4
+        if: steps.apk.outputs.fetch == 'artifact'
         with:
           name: ${{ needs.build.outputs.artifact }}
           path: out
+      - name: Resolve APK path
+        id: path
+        run: |
+          APK="$(ls out/*.apk | head -1)"
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+          echo "expect=${{ needs.build.outputs.is_release == 'true' && needs.build.outputs.version || '' }}${{ steps.apk.outputs.expect }}" >> "$GITHUB_OUTPUT"
+          sha256sum "$APK"
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - run: python3 -m pip install --quiet pillow
+      - run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr ffmpeg
+          python3 -m pip install --quiet pillow
       - name: Install and launch on an emulator
         uses: reactivecircus/android-emulator-runner@v2
         env:
-          EXPECT_VERSION_CODE: ${{ needs.build.outputs.is_release == 'true' && needs.build.outputs.version || '' }}
+          EXPECT_VERSION_CODE: ${{ steps.path.outputs.expect }}
         with:
           api-level: 34
           arch: x86_64
           profile: pixel_6
           emulator-boot-timeout: 900
           disable-animations: false
-          script: python3 scripts/android_smoke.py out/${{ needs.build.outputs.name }}.apk smoke-out
+          script: python3 scripts/android_smoke.py ${{ steps.path.outputs.apk }} smoke-out
       - name: Smoke report
         if: always()
         run: |
