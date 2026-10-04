@@ -193,8 +193,13 @@ jobs:
           - Original release: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${FROM}
           - Full qualification output: qualification.md; checksums: SHA256SUMS.txt
           EOF
-          gh release create "v${N}" out/* --latest --target "$SRC" \
-            --title "${PRODUCT} v${N}" --notes-file "$RUNNER_TEMP/notes.md"
+          if ! gh release create "v${N}" out/* --latest --target "$SRC" \
+            --title "${PRODUCT} v${N}" --notes-file "$RUNNER_TEMP/notes.md"; then
+            echo "::group::diagnostic: raw API response (headers name the missing permission)"
+            gh api -i -X POST "repos/$GITHUB_REPOSITORY/releases" -f tag_name="v${N}" -f target_commitish="$SRC" -f name="${PRODUCT} v${N}" -F draft=true || true
+            echo "::endgroup::"
+            exit 1
+          fi
           # Historical display titles only; tags, binaries and provenance are untouched.
           gh release edit "$FROM" --title "${PRODUCT} v${N} (original test build, superseded by the v${N} release)" || true
           if gh release view v4.0.0-test.1 >/dev/null 2>&1; then
