@@ -42,7 +42,7 @@ keeps its historical tag name `v4.1.0-test.3`; only the title and filenames are 
 | v4 | First modern (Capacitor) build: CFM, Subcooling, About | 4.0.0 / 4 | release tag `v4.0.0-test.1` (source f18cd5a) |
 | v5 | Refrigerant build: PT engine, Subcooling/Superheat by pressure, PT tool | 4.1.0 / 5 | GitHub release titled `CFM Calculator v5` (Latest); historical tag `v4.1.0-test.3`, source 2d27353 |
 | v6 | First build with the Hot Attic Games studio splash; first under the name `Verbal's CFM Calculator vN` / `Verbal-CFM-Calculator-vN.apk` | 6 / 6 | tag `v6`, delivered from the `release/deliver` commit |
-| v7 | next | 7 / 7 | |
+| v7 | next (candidate prepared on the branch, NOT published): Android Back fix, studio-card robustness | 7 / 7 | |
 
 Rationale: the legacy app already carried versionCode 3 ("3.0"), the two builds delivered since carried versionCode 4 and 5, so the real delivered sequence is 3 → 4 → 5.
 This keeps continuity without inventing numbers. Historical tags (`v4.0.0-test.1`, `v4.1.0-test.3`) are immutable provenance and stay; only their display titles were improved.
@@ -51,3 +51,6 @@ This keeps continuity without inventing numbers. Historical tags (`v4.0.0-test.1
 
 ## Engineering traceability (kept, not public)
 Git SHA, versionCode, package id, target SDK, refrigerant dataset id, CI run, signing identity and checksums remain in release notes, `qualification.md`, `SHA256SUMS.txt` and diagnostics.
+
+## Known issues in published builds
+* **v6** (`Verbal-CFM-Calculator-v6.apk`): (1) Android Back closes the app from every screen instead of returning to the Main Menu (Capacitor 8 core has no Back handling); (2) on a slow cold start the studio card can be skipped or shortened (the artwork wait ceiling was 800 ms and the visible clock started before the first presented frame). Both are fixed and emulator-verified in the unpublished v7 candidate. Found by the emulator smoke test (`scripts/android_smoke.py`).

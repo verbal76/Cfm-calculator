@@ -17,6 +17,7 @@
 * Implementation: `index.html` (markup + inline CSS), `src/splash.ts` (timeline), Android splash theme (plain frame), checks in `tests/splash.test.ts` and `scripts/splash_check.py`. See docs/STUDIO-SPLASH.md.
 
 ## Other standing constraints
+* Android Back: Capacitor 8 core does NOT handle it. Keep `MainActivity`'s `OnBackPressedCallback` (WebView history, close only at the root) and the history-tagged navigation in `src/main.ts`; guarded by `tests/identity.test.ts`.
 * Do not modify `Gas_CFM_calc.apk` or `cfm original.zip` (historical evidence).
 * Package id `com.hotatticgames.cfmcalculator`; offline; no INTERNET permission; targetSdk/compileSdk 36.
 * Refrigerant data provenance and limits: docs/REFRIGERANT-DATA.md. Do not invent PT values.
