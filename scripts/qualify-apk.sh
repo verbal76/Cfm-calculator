@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Inspect the ACTUAL built APK. Usage: qualify-apk.sh <apk> <expected-package>
 set -uo pipefail
-APK="$1"; EXPECTED_PACKAGE="$2"
+APK="$1"; EXPECTED_PACKAGE="$2"; HAG_LOGO_SHA256="${3:-}"
 BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
 FAIL=0
 echo "# APK qualification"
@@ -30,6 +30,14 @@ if [ -z "$LIBS" ]; then echo "PASS (not applicable): no native ELF libraries pac
 fi
 echo; echo "## APK packaging alignment result"; echo '```'
 if "$BT/zipalign" -c -P 16 -v 4 "$APK" > /tmp/zipalign.out 2>&1; then echo "PASS: zipalign -c -P 16 (16 KB page alignment for stored .so; 4-byte zip alignment)"; else echo "FAIL"; tail -20 /tmp/zipalign.out; FAIL=1; fi; echo '```'
+echo; echo "## Hot Attic Games studio splash artwork (inside the APK)"; echo '```'
+LOGO_ENTRIES="$(unzip -Z1 "$APK" | grep -E '^assets/public/assets/Hot_Attic_Games_Master_Logo_ALPHA_FINAL-.*\.png$' || true)"
+if [ -z "$HAG_LOGO_SHA256" ]; then echo "SKIPPED: no expected SHA-256 supplied"
+elif [ "$(printf '%s\n' "$LOGO_ENTRIES" | grep -c .)" -ne 1 ]; then echo "FAIL: expected exactly one Hot_Attic_Games_Master_Logo_ALPHA_FINAL asset in the APK, found: ${LOGO_ENTRIES:-none}"; FAIL=1
+else
+  GOT="$(unzip -p "$APK" "$LOGO_ENTRIES" | sha256sum | cut -d' ' -f1)"
+  if [ "$GOT" = "$HAG_LOGO_SHA256" ]; then echo "PASS: $LOGO_ENTRIES is byte-identical to the canonical Hot_Attic_Games_Master_Logo_ALPHA_FINAL.png ($GOT)"; else echo "FAIL: $LOGO_ENTRIES differs from the canonical file ($GOT vs $HAG_LOGO_SHA256)"; FAIL=1; fi
+fi; echo '```'
 PKG_ACTUAL="$("$BT/aapt2" dump badging "$APK" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
 TGT="$("$BT/aapt2" dump badging "$APK" | sed -n "s/^targetSdkVersion:'\([0-9]*\)'.*/\1/p")"
 echo; echo "## Gates"

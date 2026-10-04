@@ -1,7 +1,8 @@
 import './style.css';
 import { calculateCfm, type CalcError } from './calc';
 import { mountPicker, onRefrigerantChange, selectedRefrigerant } from './picker';
-import { DATASET_ID, getRefrigerant, tableRows } from './refrigerant/engine';
+import { DATASET_ID, getRefrigerant, listRefrigerants, tableRows } from './refrigerant/engine';
+import { startDomSplash } from './splash';
 import {
   calculateSubcoolingFromPressure, calculateSuperheat, lookupFromPressure, lookupFromTemperature,
   SUBCOOL_TOLERANCE_DEFAULT, VERDICT_TEXT, type FieldError,
@@ -168,3 +169,10 @@ onRefrigerantChange(() => { clearSubcoolResults(); clearSuperheatResults(); rend
 $('copy-diag').addEventListener('click', () => void copyDiagnostics());
 window.addEventListener('hashchange', route);
 route();
+
+// ---- Start-up: the studio card (src/splash.ts) is shown on cold launch; this work runs behind it, so it adds no waiting time.
+async function initApp() {
+  listRefrigerants();           // parse/index the bundled PT dataset now
+  native = await loadNativeInfo(); // warm the native bridge; About/diagnostics reuse the result
+}
+void startDomSplash(initApp);

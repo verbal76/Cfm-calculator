@@ -13,14 +13,14 @@
 * **Signing:** release build signed with the debug key for physical testing. No production key exists or is committed.
 * **OTA:** NOT RECOMMENDED. Offline calculator with a bundled UI; an updater adds attack surface and complexity for no value.
   "Applying update" UI: NOT APPLICABLE.
-* **Studio splash:** `branding/Hot_Attic_Games_Master_Logo.png` is absent from this repository and its history.
-  BLOCKED — CANONICAL HOT ATTIC GAMES ASSET REQUIRES PORTFOLIO/OWNER SUPPLY. Startup uses a neutral solid-color native splash (no Capacitor logo).
+* **Studio splash:** IMPLEMENTED (v6 candidate). The owner-supplied canonical artwork `Hot_Attic_Games_Master_Logo_ALPHA_FINAL.png` (repo root, 1536x1024 RGBA) is shown on cold launch
+  as the first thing after a plain native splash frame; see docs/STUDIO-SPLASH.md. Not OTA-related: this app has no OTA.
 * **AAB:** CI also builds `bundleRelease` (AAB READY; Play upload and production signing deferred).
 * **16 KB:** no native libraries are packaged; APK alignment is verified in CI with `zipalign -P 16` (`scripts/qualify-apk.sh`).
 
 ## Physical-device test checklist
 1. Install: succeeds; package `com.hotatticgames.cfmcalculator`; coexists with legacy app (different id).
-2. Startup: cold + warm launch lands on CFM screen; blue splash only; portrait and landscape OK.
+2. Startup: cold launch shows the Hot Attic Games card (~2.5 s) then the Main Menu; portrait and landscape OK.
 3. CFM: 108000 / 50 / 1.08 / 3 → Total 2000, per ton 666.6666666666666; zero, decimals, large (1e9), empty, letters, ΔT=0, tons=0 (error text, partial output); Clear.
 4. Subcool: target 10, liquid 90, sat 100 → 10, within; sat 96 → Add Refrigerant; sat 104 → Recover refrigerant; tolerance edit; Clear restores 3.
 5. Menu/Superheat/back button steps Main Menu ↔ screens; back on CFM exits.

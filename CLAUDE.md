@@ -8,6 +8,13 @@
 * Whenever you deliver a new playable build, tell the owner: `CFM Calculator v<N>` and the exact filename to install, and state that the next one will be v<N+1>.
 * SHA, versionCode, dataset id, CI run, etc. stay in diagnostics, release notes and docs only.
 
+## Hot Attic Games studio splash (standing studio-wide requirement)
+* Every Hot Attic Games app opens with the studio card BEFORE its own title/menu: native splash (plain frame) -> studio card -> product opening.
+* The artwork is the owner-supplied canonical file **`Hot_Attic_Games_Master_Logo_ALPHA_FINAL.png`** at the repository root. Never redraw, recreate, crop, stretch, recolour or substitute it.
+  The old `branding/Hot_Attic_Games_Master_Logo.png` path is obsolete; do not wait for or look for it. A test pins the file's SHA-256: changing the logo needs the owner.
+* Cold launch only (~2.5 s, hard cap 3 s, fade in/out, aspect preserved, transparency preserved); never replay on resume/reload/navigation; init runs behind it; it can never strand the user.
+* Implementation: `index.html` (markup + inline CSS), `src/splash.ts` (timeline), Android splash theme (plain frame), checks in `tests/splash.test.ts` and `scripts/splash_check.py`. See docs/STUDIO-SPLASH.md.
+
 ## Other standing constraints
 * Do not modify `Gas_CFM_calc.apk` or `cfm original.zip` (historical evidence).
 * Package id `com.hotatticgames.cfmcalculator`; offline; no INTERNET permission; targetSdk/compileSdk 36.

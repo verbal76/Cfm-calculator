@@ -70,6 +70,17 @@ jobs:
         env:
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_REF_NAME: ${{ github.head_ref || github.ref_name }}
+      - name: Studio splash - built bundle contains the canonical logo
+        run: node scripts/verify-splash-asset.mjs
+      - name: Studio splash - end-to-end check in a real browser
+        run: |
+          set -euo pipefail
+          npx vite preview --port 4173 --host 127.0.0.1 > "$RUNNER_TEMP/preview.log" 2>&1 &
+          PREVIEW_PID=$!
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:4173/ >/dev/null && break; sleep 1; done
+          python3 -m pip install --quiet playwright pillow
+          python3 scripts/splash_check.py http://127.0.0.1:4173 "$RUNNER_TEMP/splash-shots"
+          kill $PREVIEW_PID
       - name: Capacitor sync
         run: npx cap sync android
 
@@ -94,7 +105,7 @@ jobs:
           cp "$(ls android/app/build/outputs/apk/release/*.apk | head -1)" "out/$NAME.apk"
           cp android/app/build/outputs/bundle/release/*.aab "out/$NAME.aab"
           set +e
-          { echo "Product: $PRODUCT  Public version: v${VERSION}$([ "$IS_RELEASE" = true ] || echo -dev)"; echo "Source commit: $GITHUB_SHA"; echo "Refrigerant dataset: $DATASET"; echo; scripts/qualify-apk.sh "out/$NAME.apk" "$EXPECTED_PACKAGE"; } | tee out/qualification.md
+          { echo "Product: $PRODUCT  Public version: v${VERSION}$([ "$IS_RELEASE" = true ] || echo -dev)"; echo "Source commit: $GITHUB_SHA"; echo "Refrigerant dataset: $DATASET"; echo; scripts/qualify-apk.sh "out/$NAME.apk" "$EXPECTED_PACKAGE" "$(sha256sum Hot_Attic_Games_Master_Logo_ALPHA_FINAL.png | cut -d' ' -f1)"; } | tee out/qualification.md
           rc=${PIPESTATUS[0]}
           cat out/qualification.md >> "$GITHUB_STEP_SUMMARY"
           (cd out && sha256sum "$NAME.apk" "$NAME.aab" | tee SHA256SUMS.txt)
@@ -102,6 +113,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         if: always()
+        # (qualification.md also records the studio-splash artwork check)
         with:
           name: ${{ env.IS_RELEASE == 'true' && format('{0}-v{1}', 'CFM-Calculator', env.VERSION) || 'CFM-Calculator-CI' }}
           path: out/

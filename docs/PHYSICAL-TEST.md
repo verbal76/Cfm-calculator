@@ -5,8 +5,8 @@ Expected values come from the bundled dataset `cfm-pt-1.0+coolprop-8.0.0+fb20caa
 Test builds use an ephemeral debug key: **uninstall any previous test build first**. The legacy App Inventor app can stay installed (different package).
 
 ## A. Install and launch
-1. Install the APK; launcher label "Verbal's CFM Calculator", blue splash only (no logo).
-2. Cold launch (force-stop first) lands on the **Main Menu** with 4 big buttons: CFM, Subcooling, Superheat, Refrigerant PT.
+1. Install the APK; launcher label "Verbal's CFM Calculator". (v6 and later) Cold launch: plain dark frame, then the Hot Attic Games logo card for about 2.5 s with a soft fade in/out, then the Main Menu. Background and reopen: no logo card again. Force-stop and reopen: logo card again.
+2. Cold launch (force-stop first) shows the studio card, then lands on the **Main Menu** with 4 big buttons: CFM, Subcooling, Superheat, Refrigerant PT.
 3. Warm launch (Home, then reopen): same screen.
 4. Settings → App info → Permissions shows **none requested**.
 

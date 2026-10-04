@@ -6,9 +6,35 @@
   <meta name="color-scheme" content="dark" />
   <title>Verbal's CFM Calculator</title>
   <link rel="icon" href="data:," />
+  <script>
+    // Cold-launch only: if the studio card already ran in this WebView session (reload, etc.) skip it before first paint.
+    try { if (sessionStorage.getItem('hag.splash.shown') === '1') document.documentElement.dataset.splash = 'skip'; } catch (e) { /* storage unavailable: show the card */ }
+  </script>
+  <style>
+    /* Hot Attic Games studio card. Inline so the very first frame is already the card background (no white/black flash). */
+    html { background: #0f0c0b; }
+    #hag-splash {
+      position: fixed; inset: 0; z-index: 2147483647; display: flex; align-items: center; justify-content: center; box-sizing: border-box;
+      background: #0f0c0b; opacity: 1;
+      padding: calc(max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)) + 8vmin) calc(max(env(safe-area-inset-right, 0px), var(--safe-area-inset-right, 0px)) + 8vmin)
+               calc(max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)) + 8vmin) calc(max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px)) + 8vmin);
+      /* CSS-only failsafe: whatever happens to JS, the card is gone after 4.5 s */
+      animation: hag-card-failsafe 1ms linear 4.5s forwards;
+    }
+    #hag-splash img { width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 400ms ease; user-select: none; -webkit-user-drag: none; }
+    html[data-splash="in"] #hag-splash img, html[data-splash="hold"] #hag-splash img, html[data-splash="out"] #hag-splash img { opacity: 1; }
+    html[data-splash="out"] #hag-splash { opacity: 0; transition: opacity 400ms ease; pointer-events: none; }
+    html[data-splash="done"] #hag-splash, html[data-splash="skip"] #hag-splash { display: none; }
+    /* the app UI is not visible (or interactive) until the card starts fading out */
+    html:not([data-splash="out"]):not([data-splash="done"]):not([data-splash="skip"]) main { visibility: hidden; animation: hag-main-failsafe 1ms linear 4.5s forwards; }
+    @keyframes hag-card-failsafe { to { opacity: 0; visibility: hidden; pointer-events: none; } }
+    @keyframes hag-main-failsafe { to { visibility: visible; } }
+    @media (prefers-reduced-motion: reduce) { #hag-splash img, html[data-splash="out"] #hag-splash { transition: none; } }
+  </style>
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
+<div id="hag-splash" role="img" aria-label="Hot Attic Games"><img id="hag-splash-img" alt="" decoding="async" src="/Hot_Attic_Games_Master_Logo_ALPHA_FINAL.png" /></div>
 <main>
   <!-- CFM (legacy Screen1, launcher screen) -->
   <section id="screen-cfm" data-screen>

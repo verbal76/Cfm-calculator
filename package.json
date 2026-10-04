@@ -12,6 +12,7 @@
     "test": "vitest run",
     "verify:identity": "vitest run tests/identity.test.ts",
     "cap:sync": "cap sync android",
+    "verify:splash": "node scripts/verify-splash-asset.mjs",
     "check": "npm run typecheck && npm run lint && npm test && npm run build"
   },
   "dependencies": {
