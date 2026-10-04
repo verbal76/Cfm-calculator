@@ -3,6 +3,8 @@ name: Android build
 # Public release convention: docs/RELEASING.md
 #  * branch pushes / PRs  -> CI build only (artifact "CFM-Calculator-CI-<sha>.apk", labelled "-dev"); NOTHING is published
 #  * push of a tag vN     -> release build, qualification, GitHub Release "CFM Calculator vN" marked Latest
+#  * OR a branch push whose commit has release/deliver == release/VERSION (and no vN release yet) -> same as a tag push;
+#    the workflow creates tag vN at that commit (use this when tags cannot be pushed directly)
 #  * manual "promote"     -> re-label an already-verified release binary as vN WITHOUT rebuilding it
 
 on:
@@ -35,6 +37,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Resolve public version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           VERSION="$(tr -d '[:space:]' < release/VERSION)"
@@ -44,6 +48,9 @@ jobs:
             [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+$ ]] || { echo "Release tags must look like v6 (got $GITHUB_REF_NAME)"; exit 1; }
             [ "${GITHUB_REF_NAME#v}" = "$VERSION" ] || { echo "Tag $GITHUB_REF_NAME does not match release/VERSION ($VERSION)"; exit 1; }
             IS_RELEASE=true
+          elif [ "$GITHUB_EVENT_NAME" = push ] && [ -f release/deliver ] && [ "$(tr -d '[:space:]' < release/deliver)" = "$VERSION" ] \
+               && ! gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            IS_RELEASE=true   # commit-based delivery request for the next unused version
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "IS_RELEASE=$IS_RELEASE" >> "$GITHUB_ENV"
@@ -129,8 +136,9 @@ jobs:
             --title "${PRODUCT} v${VERSION}" --notes-file "$RUNNER_TEMP/notes.md"
 
   promote:
-    # Re-label an already-built, already-qualified binary as the next public version without rebuilding it.
-    # Triggered by "Run workflow" (inputs) OR by a branch push when release/promote.json requests a version that does not exist yet.
+    # Publish an already-built, already-qualified release under its public version WITHOUT rebuilding: the existing release is retitled
+    # "CFM Calculator vN", taken off prerelease, made Latest, and its binaries are replaced by identical-bytes copies named CFM-Calculator-vN.*
+    # (SHA-256 verified). The historical tag is never touched. Request via "Run workflow" inputs OR a branch push with release/promote.json.
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/'))
     runs-on: ubuntu-latest
     env:
@@ -151,13 +159,12 @@ jobs:
           else echo "run=false" >> "$GITHUB_OUTPUT"; echo "No promotion requested."; exit 0; fi
           [[ "$N" =~ ^[0-9]+$ ]] || { echo "version must be an integer"; exit 1; }
           [ -n "$FROM" ] || { echo "from tag is required"; exit 1; }
-          if gh release view "v$N" >/dev/null 2>&1; then
-            echo "Release v$N already exists; versions are never reused. Nothing to do."
-            echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
-          fi
+          CUR="$(gh release view "$FROM" --json name -q .name)"
+          if [ "$CUR" = "${PRODUCT} v${N}" ]; then echo "Release $FROM is already published as '$CUR'. Nothing to do."; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if gh release view "v$N" >/dev/null 2>&1; then echo "A release tagged v$N already exists; versions are never reused."; exit 1; fi
           { echo "run=true"; echo "n=$N"; echo "from=$FROM"; } >> "$GITHUB_OUTPUT"
 
-      - name: Promote existing release binary
+      - name: Publish existing release as the public version
         if: steps.req.outputs.run == 'true'
         env:
           N: ${{ steps.req.outputs.n }}
@@ -171,8 +178,10 @@ jobs:
           HAVE="$(sha256sum "$APK" | cut -d' ' -f1)"
           [ "$WANT" = "$HAVE" ] || { echo "APK checksum mismatch: $WANT vs $HAVE"; exit 1; }
           SRC="$(gh api "repos/$GITHUB_REPOSITORY/commits/$FROM" --jq .sha)"
+          OLD_APK="$(basename "$APK")"; OLD_AAB="$(basename "$AAB")"
           NAME="${FILE_PREFIX}-v${N}"
           cp "$APK" "out/$NAME.apk"; cp "$AAB" "out/$NAME.aab"; cp dl/qualification.md out/qualification.md
+          cmp "$APK" "out/$NAME.apk"
           (cd out && sha256sum "$NAME.apk" "$NAME.aab" > SHA256SUMS.txt)
           cat > "$RUNNER_TEMP/notes.md" <<EOF
           # ${PRODUCT} v${N}
@@ -184,24 +193,22 @@ jobs:
           Debug-signed test key that changes per build: uninstall any previous test build before installing.
 
           ## Technical details (engineering only)
-          - Binary promoted UNCHANGED (not rebuilt) from release \`${FROM}\`; identical bytes, SHA-256 verified against that release.
+          - Binary published UNCHANGED (not rebuilt): identical bytes to the original asset \`${OLD_APK}\`, SHA-256 verified.
           - Source commit: ${SRC}
           - APK SHA-256: ${HAVE}
           - Inside this older build the app shows its engineering version in About ("4.1.0 (build ${N})"); builds from v$((N + 1)) onward show "v$((N + 1))", "v$((N + 2))", ...
           - Android versionCode: ${N}
           - Package: ${EXPECTED_PACKAGE}
-          - Original release: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${FROM}
+          - Historical git tag: \`${FROM}\` (unchanged; kept for provenance)
+          - Original asset names: ${OLD_APK}, ${OLD_AAB}
           - Full qualification output: qualification.md; checksums: SHA256SUMS.txt
           EOF
-          if ! gh release create "v${N}" out/* --latest --target "$SRC" \
-            --title "${PRODUCT} v${N}" --notes-file "$RUNNER_TEMP/notes.md"; then
-            echo "::group::diagnostic: raw API response (headers name the missing permission)"
-            gh api -i -X POST "repos/$GITHUB_REPOSITORY/releases" -f tag_name="v${N}" -f target_commitish="$SRC" -f name="${PRODUCT} v${N}" -F draft=true || true
-            echo "::endgroup::"
-            exit 1
-          fi
-          # Historical display titles only; tags, binaries and provenance are untouched.
-          gh release edit "$FROM" --title "${PRODUCT} v${N} (original test build, superseded by the v${N} release)" || true
+          # upload the clean copies first, then remove the cryptic originals, then present as Latest
+          gh release upload "$FROM" out/* --clobber
+          gh release delete-asset "$FROM" "$OLD_APK" -y
+          gh release delete-asset "$FROM" "$OLD_AAB" -y
+          gh release edit "$FROM" --title "${PRODUCT} v${N}" --notes-file "$RUNNER_TEMP/notes.md" --prerelease=false --latest
+          # Older release: display title only.
           if gh release view v4.0.0-test.1 >/dev/null 2>&1; then
             gh release edit v4.0.0-test.1 --title "${PRODUCT} v4 (historical test build)" || true
           fi

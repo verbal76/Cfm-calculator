@@ -20,23 +20,27 @@ diagnostics, release title, tag, filenames and notes are all derived from it. A 
 
 ## Delivering a new build (the only way a new number is consumed)
 1. Make sure `release/VERSION` is the next unused number `N` (it already is after any release; bump it in the commit that prepares the build).
-2. Merge/commit the source, then push the tag: `git tag vN && git push origin vN`.
+2. Merge/commit the source, then either push the tag (`git tag vN && git push origin vN`) **or**, where tags cannot be pushed, commit a file `release/deliver`
+   containing `N` (the workflow then creates tag `vN` at that commit). Either way the number must equal `release/VERSION` and `vN` must not exist yet.
 3. The `Android build` workflow builds, qualifies (package, targetSdk, signature, permissions, ABIs, 16 KB, alignment) and publishes **CFM Calculator vN** as Latest.
 4. Immediately afterwards bump `release/VERSION` to `N+1` for the following build.
 
 Rules: never reuse a number for a different binary; never overwrite a published version; failed CI attempts and developer-only builds do not consume numbers.
 CI builds from branches/PRs are named `CFM-Calculator-CI-<sha>.apk`, say `v<N>-dev` in About, and are never published as releases.
 
-## Re-labelling an existing verified binary (no rebuild)
-Either Actions → **Android build** → *Run workflow* with `promote_version=N` and `promote_from_tag=<existing tag>`, or commit `release/promote.json` (`{"version": N, "from": "<tag>"}`; it is idempotent and skips if `vN` already exists). The workflow downloads the exact binary, verifies its SHA-256 against
-that release's `SHA256SUMS.txt`, republishes the identical bytes as `CFM-Calculator-vN.apk` and `CFM Calculator vN` (Latest), and retitles the old test release for display only.
+## Publishing an existing verified binary under its public version (no rebuild)
+Used once for v5. Either Actions → **Android build** → *Run workflow* (`promote_version=N`, `promote_from_tag=<existing tag>`), or commit `release/promote.json`
+(`{"version": N, "from": "<tag>"}`; idempotent). The workflow downloads the release's exact binary, verifies its SHA-256 against that release's `SHA256SUMS.txt`, uploads
+identical-bytes copies named `CFM-Calculator-vN.apk/.aab`, removes the cryptic original asset names, retitles the release `CFM Calculator vN`, takes it off prerelease and makes it
+**Latest**. The historical git tag is never moved or deleted (the Actions token cannot create a new tag at a commit that modified workflow files, and proxy sessions cannot push tags, so v5
+keeps its historical tag name `v4.1.0-test.3`; only the title and filenames are public-facing).
 
 ## History and numbering decision
 | Public version | Build | versionName / versionCode | Where |
 |---|---|---|---|
 | v3 | Legacy MIT App Inventor app "Verbal's CFM calculator" | 3.0 / 3 | `Gas_CFM_calc.apk` in the repository (never a GitHub Release; preserved untouched) |
 | v4 | First modern (Capacitor) build: CFM, Subcooling, About | 4.0.0 / 4 | release tag `v4.0.0-test.1` (source f18cd5a) |
-| v5 | Refrigerant build: PT engine, Subcooling/Superheat by pressure, PT tool | 4.1.0 / 5 | release tag `v4.1.0-test.3` (source 2d27353), republished as `v5` |
+| v5 | Refrigerant build: PT engine, Subcooling/Superheat by pressure, PT tool | 4.1.0 / 5 | GitHub release titled `CFM Calculator v5` (Latest); historical tag `v4.1.0-test.3`, source 2d27353 |
 | v6 | next | 6 / 6 | |
 
 Rationale: the legacy app already carried versionCode 3 ("3.0"), the two builds delivered since carried versionCode 4 and 5, so the real delivered sequence is 3 → 4 → 5.

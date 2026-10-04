@@ -62,7 +62,8 @@ describe('public release convention (docs/RELEASING.md)', () => {
     expect(w).toContain('--title "${PRODUCT} v${VERSION}"');
     expect(w).toContain('--latest');
     expect(w).toContain('NAME="${FILE_PREFIX}-v${VERSION}"');
-    expect(w).not.toMatch(/--prerelease/);
+    expect(w).not.toMatch(/--prerelease(?!=false)/);
+    expect(w).toContain('release/deliver');
   });
   it('docs and CLAUDE.md state the convention', () => {
     expect(read('CLAUDE.md')).toMatch(/CFM Calculator v<N>/);
