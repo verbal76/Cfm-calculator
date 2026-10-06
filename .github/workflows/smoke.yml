@@ -1,0 +1,70 @@
+name: Emulator smoke test (opt-in)
+
+# Opt-in only (budget policy, CLAUDE.md). Runs ONLY when release/smoke is changed (its content = a PUBLISHED version number N, whose
+# APK asset is installed and launched on an emulator) or when started by hand. It is never part of ordinary pushes or releases.
+# Use it when the emulator evidence is actually needed, not as a routine check.
+
+on:
+  push:
+    branches: ['**']
+    paths: ['release/smoke']
+  workflow_dispatch:
+
+concurrency:
+  group: smoke
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    # Real install + launch of the PUBLISHED release asset vN on an Android emulator. Emulator evidence only: NOT a physical-device test.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get the published APK under test
+        id: path
+        run: |
+          set -euo pipefail
+          N="$(tr -d '[:space:]' < release/smoke)"
+          [[ "$N" =~ ^[0-9]+$ ]] || { echo "release/smoke must contain one integer (a published version)"; exit 1; }
+          mkdir -p out
+          gh release download "v$N" -p '*.apk' -D out
+          APK="$(ls out/*.apk | head -1)"
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+          echo "expect=$N" >> "$GITHUB_OUTPUT"
+          sha256sum "$APK"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr ffmpeg
+          python3 -m pip install --quiet pillow
+      - name: Install and launch on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          EXPECT_VERSION_CODE: ${{ steps.path.outputs.expect }}
+        with:
+          api-level: 34
+          arch: x86_64
+          profile: pixel_6
+          emulator-boot-timeout: 900
+          disable-animations: false
+          script: python3 scripts/android_smoke.py ${{ steps.path.outputs.apk }} smoke-out
+      - name: Smoke report
+        if: always()
+        run: |
+          [ -f smoke-out/smoke-report.md ] && cat smoke-out/smoke-report.md >> "$GITHUB_STEP_SUMMARY" || echo "no smoke report produced"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-smoke
+          path: smoke-out/
+          if-no-files-found: ignore

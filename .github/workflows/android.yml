@@ -1,0 +1,157 @@
+name: Release build
+
+# GitHub Actions budget policy: CLAUDE.md ("Actions budget") and docs/RELEASING.md. This workflow is RELEASE-ONLY.
+# It never runs for ordinary pushes or pull requests (those are covered by ci.yml, itself cheap, and by scripts/local-check.sh).
+#  * push of a tag vN                              -> release build, qualification, GitHub Release "Verbal's CFM Calculator vN" (Latest)
+#  * OR a push that touches release/deliver, where release/deliver == release/VERSION and no vN release exists yet
+#    -> same as a tag push; the workflow creates tag vN at that commit (use when tags cannot be pushed directly)
+# A release/deliver push that is not a real delivery exits after the first (seconds-long) step. Nothing is built or published.
+# Release safety gates (tests, qualify-apk.sh signature/identity/16KB/permission checks, version/tag match) are unchanged.
+# Related, path-triggered only: promote.yml (re-label a verified release without rebuilding), smoke.yml (opt-in emulator test).
+
+on:
+  push:
+    branches: ['**']
+    paths: ['release/deliver']
+    tags: ['v[0-9]*']
+
+# a release publish must never be cancelled half-way; a second delivery just queues
+concurrency:
+  group: release-build
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # create releases
+
+env:
+  EXPECTED_PACKAGE: com.hotatticgames.cfmcalculator
+  PRODUCT: "Verbal's CFM Calculator"
+  FILE_PREFIX: Verbal-CFM-Calculator
+
+jobs:
+  build:
+    timeout-minutes: 40
+    runs-on: ubuntu-latest
+    outputs:
+      is_release: ${{ steps.ver.outputs.is_release }}
+      version: ${{ steps.ver.outputs.version }}
+      name: ${{ steps.ver.outputs.name }}
+      artifact: ${{ steps.ver.outputs.artifact }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve public version
+        id: ver
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < release/VERSION)"
+          [[ "$VERSION" =~ ^[0-9]+$ ]] || { echo "release/VERSION must be a single integer"; exit 1; }
+          IS_RELEASE=false
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+$ ]] || { echo "Release tags must look like v6 (got $GITHUB_REF_NAME)"; exit 1; }
+            [ "${GITHUB_REF_NAME#v}" = "$VERSION" ] || { echo "Tag $GITHUB_REF_NAME does not match release/VERSION ($VERSION)"; exit 1; }
+            IS_RELEASE=true
+          elif [ "$GITHUB_EVENT_NAME" = push ] && [ -f release/deliver ] && [ "$(tr -d '[:space:]' < release/deliver)" = "$VERSION" ] \
+               && ! gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            IS_RELEASE=true   # commit-based delivery request for the next unused version
+          fi
+          if [ "$IS_RELEASE" = true ]; then NAME="${FILE_PREFIX}-v${VERSION}"; ARTIFACT="${FILE_PREFIX}-v${VERSION}"; else NAME="${FILE_PREFIX}-CI-${GITHUB_SHA::7}"; ARTIFACT="${FILE_PREFIX}-CI"; fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "IS_RELEASE=$IS_RELEASE" >> "$GITHUB_ENV"
+          echo "NAME=$NAME" >> "$GITHUB_ENV"
+          { echo "is_release=$IS_RELEASE"; echo "version=$VERSION"; echo "name=$NAME"; echo "artifact=$ARTIFACT"; } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        if: env.IS_RELEASE == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - if: env.IS_RELEASE == 'true'
+        run: npm ci
+      - if: env.IS_RELEASE == 'true'
+        run: npm run typecheck
+      - if: env.IS_RELEASE == 'true'
+        run: npm run lint
+      - name: Unit, calculation-regression and identity tests
+        if: env.IS_RELEASE == 'true'
+        run: npm test
+      - name: Web build
+        if: env.IS_RELEASE == 'true'
+        run: npm run build
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_REF_NAME: ${{ github.head_ref || github.ref_name }}
+      - name: Studio splash - built bundle contains the canonical logo
+        if: env.IS_RELEASE == 'true'
+        run: node scripts/verify-splash-asset.mjs
+      - name: Capacitor sync
+        if: env.IS_RELEASE == 'true'
+        run: npx cap sync android
+
+      - uses: actions/setup-java@v4
+        if: env.IS_RELEASE == 'true'
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+        if: env.IS_RELEASE == 'true'
+
+      - name: Gradle (release APK + AAB)
+        if: env.IS_RELEASE == 'true'
+        working-directory: android
+        run: ./gradlew --no-daemon assembleRelease bundleRelease -PreleaseBuild="$IS_RELEASE"
+
+      - name: Qualify the actual APK
+        if: env.IS_RELEASE == 'true'
+        run: |
+          set -uo pipefail
+          DATASET="$(node -p "require('./src/refrigerant/dataset.json').dataset")"
+          echo "DATASET=$DATASET" >> "$GITHUB_ENV"
+          mkdir -p out
+          cp "$(ls android/app/build/outputs/apk/release/*.apk | head -1)" "out/$NAME.apk"
+          cp android/app/build/outputs/bundle/release/*.aab "out/$NAME.aab"
+          set +e
+          { echo "Product: $PRODUCT  Public version: v${VERSION}$([ "$IS_RELEASE" = true ] || echo -dev)"; echo "Source commit: $GITHUB_SHA"; echo "Refrigerant dataset: $DATASET"; echo; scripts/qualify-apk.sh "out/$NAME.apk" "$EXPECTED_PACKAGE" "$(sha256sum Hot_Attic_Games_Master_Logo_ALPHA_FINAL.png | cut -d' ' -f1)" "$([ "$IS_RELEASE" = true ] && echo "$VERSION" || true)"; } | tee out/qualification.md
+          rc=${PIPESTATUS[0]}
+          cat out/qualification.md >> "$GITHUB_STEP_SUMMARY"
+          (cd out && sha256sum "$NAME.apk" "$NAME.aab" | tee SHA256SUMS.txt)
+          exit $rc
+
+      - uses: actions/upload-artifact@v4
+        if: always() && env.IS_RELEASE == 'true'
+        # (qualification.md also records the studio-splash artwork check)
+        with:
+          name: ${{ steps.ver.outputs.artifact }}
+          path: out/
+          if-no-files-found: error
+
+      - name: Publish GitHub Release (tags only)
+        if: env.IS_RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK_SHA="$(sha256sum "out/$NAME.apk" | cut -d' ' -f1)"
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          # ${PRODUCT} v${VERSION}
+
+          **Android - install this file:** \`${NAME}.apk\`
+
+          Next version will be **v$((VERSION + 1))**.
+
+          Debug-signed test key that changes per build: uninstall the previous build (v5 or any test build) before installing.
+
+          ## Technical details (engineering only)
+          - Source commit: ${GITHUB_SHA}
+          - Android versionCode: ${VERSION} (equals the public version)
+          - Package: ${EXPECTED_PACKAGE}
+          - APK SHA-256: ${APK_SHA}
+          - Refrigerant dataset: ${DATASET}
+          - Actions run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          - Full qualification output: qualification.md; checksums: SHA256SUMS.txt
+          EOF
+          gh release create "v${VERSION}" out/* --latest --target "$GITHUB_SHA" \
+            --title "${PRODUCT} v${VERSION}" --notes-file "$RUNNER_TEMP/notes.md"
