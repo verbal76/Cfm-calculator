@@ -16,6 +16,14 @@
 * Cold launch only (~2.5 s, hard cap 3 s, fade in/out, aspect preserved, transparency preserved); never replay on resume/reload/navigation; init runs behind it; it can never strand the user.
 * Implementation: `index.html` (markup + inline CSS), `src/splash.ts` (timeline), Android splash theme (plain frame), checks in `tests/splash.test.ts` and `scripts/splash_check.py`. See docs/STUDIO-SPLASH.md.
 
+## Actions budget (standing owner directive; hosted minutes are scarce and shared)
+* Before triggering ANY hosted workflow ask: **"Does this need GitHub Actions, or can I prove it locally?"** Validate locally first: `npm run check:all` (`scripts/local-check.sh`: tsc, eslint, vitest, web build, splash asset, real-browser splash check). Never use CI as a substitute for local debugging or re-run it to see if a test passes.
+* Workflows: `ci.yml` (cheap checks; non-draft PRs + `main` only; skips docs/`release/**`), `android.yml` (RELEASE-only: tag `vN` or a `release/deliver` push), `promote.yml` (only `release/promote.json`), `smoke.yml` (opt-in emulator test, only `release/smoke`). Guarded by `tests/workflow-policy.test.ts`; do not widen triggers.
+* Docs/research/bookkeeping changes cost ~zero minutes (path filters). Keep PRs in draft while iterating. No APK/AAB/EXE/OTA artifacts on routine commits; no duplicate workflows for one push; superseded runs are cancelled; reuse a verified artifact (promote path) instead of rebuilding the same SHA.
+* Hosted Actions ARE appropriate for: final CI of a candidate near release, tests not reproducible locally, artifacts actually needed for physical testing/release, OTA publication checks, store/release builds, important platform-specific checks.
+* Never bypass release safety (qualification/signing checks, version/tag match, runtime/OTA compatibility, release gates, rollback baseline). Never publish a release/OTA/APK merely because of workflow or policy work.
+* Do the CI cleanup/operation autonomously; do not ask the owner to trigger or operate routine workflows.
+
 ## Other standing constraints
 * Android Back: Capacitor 8 core does NOT handle it. Keep `MainActivity`'s `OnBackPressedCallback` (WebView history, close only at the root) and the history-tagged navigation in `src/main.ts`; guarded by `tests/identity.test.ts`.
 * Do not modify `Gas_CFM_calc.apk` or `cfm original.zip` (historical evidence).

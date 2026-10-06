@@ -1,26 +1,24 @@
-name: Android build
+name: Release build
 
-# Public release convention: docs/RELEASING.md
-#  * branch pushes / PRs  -> CI build only (artifact "Verbal-CFM-Calculator-CI-<sha>.apk", labelled "-dev"); NOTHING is published
-#  * push of a tag vN     -> release build, qualification, GitHub Release "Verbal's CFM Calculator vN" marked Latest,
-#                            asset Verbal-CFM-Calculator-vN.apk, then an emulator install/launch smoke test
-#  * OR a branch push whose commit has release/deliver == release/VERSION (and no vN release yet) -> same as a tag push;
-#    the workflow creates tag vN at that commit (use this when tags cannot be pushed directly)
-#  * manual "promote"     -> re-label an already-verified release binary as vN WITHOUT rebuilding it
+# GitHub Actions budget policy: CLAUDE.md ("Actions budget") and docs/RELEASING.md. This workflow is RELEASE-ONLY.
+# It never runs for ordinary pushes or pull requests (those are covered by ci.yml, itself cheap, and by scripts/local-check.sh).
+#  * push of a tag vN                              -> release build, qualification, GitHub Release "Verbal's CFM Calculator vN" (Latest)
+#  * OR a push that touches release/deliver, where release/deliver == release/VERSION and no vN release exists yet
+#    -> same as a tag push; the workflow creates tag vN at that commit (use when tags cannot be pushed directly)
+# A release/deliver push that is not a real delivery exits after the first (seconds-long) step. Nothing is built or published.
+# Release safety gates (tests, qualify-apk.sh signature/identity/16KB/permission checks, version/tag match) are unchanged.
+# Related, path-triggered only: promote.yml (re-label a verified release without rebuilding), smoke.yml (opt-in emulator test).
 
 on:
   push:
-    branches: [main, 'ccr-**']
+    branches: ['**']
+    paths: ['release/deliver']
     tags: ['v[0-9]*']
-  pull_request:
-  workflow_dispatch:
-    inputs:
-      promote_version:
-        description: 'Public version number to publish, e.g. 5'
-        required: false
-      promote_from_tag:
-        description: 'Existing verified release tag whose exact binary becomes that version'
-        required: false
+
+# a release publish must never be cancelled half-way; a second delivery just queues
+concurrency:
+  group: release-build
+  cancel-in-progress: false
 
 permissions:
   contents: write   # create releases
@@ -32,7 +30,7 @@ env:
 
 jobs:
   build:
-    if: github.event_name != 'workflow_dispatch'
+    timeout-minutes: 40
     runs-on: ubuntu-latest
     outputs:
       is_release: ${{ steps.ver.outputs.is_release }}
@@ -66,45 +64,48 @@ jobs:
           { echo "is_release=$IS_RELEASE"; echo "version=$VERSION"; echo "name=$NAME"; echo "artifact=$ARTIFACT"; } >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
+        if: env.IS_RELEASE == 'true'
         with:
           node-version: 22
           cache: npm
 
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
+      - if: env.IS_RELEASE == 'true'
+        run: npm ci
+      - if: env.IS_RELEASE == 'true'
+        run: npm run typecheck
+      - if: env.IS_RELEASE == 'true'
+        run: npm run lint
       - name: Unit, calculation-regression and identity tests
+        if: env.IS_RELEASE == 'true'
         run: npm test
       - name: Web build
+        if: env.IS_RELEASE == 'true'
         run: npm run build
         env:
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_REF_NAME: ${{ github.head_ref || github.ref_name }}
       - name: Studio splash - built bundle contains the canonical logo
+        if: env.IS_RELEASE == 'true'
         run: node scripts/verify-splash-asset.mjs
-      - name: Studio splash - end-to-end check in a real browser
-        run: |
-          set -euo pipefail
-          npx vite preview --port 4173 --host 127.0.0.1 > "$RUNNER_TEMP/preview.log" 2>&1 &
-          PREVIEW_PID=$!
-          for i in $(seq 1 30); do curl -sf http://127.0.0.1:4173/ >/dev/null && break; sleep 1; done
-          python3 -m pip install --quiet playwright pillow
-          python3 scripts/splash_check.py http://127.0.0.1:4173 "$RUNNER_TEMP/splash-shots"
-          kill $PREVIEW_PID
       - name: Capacitor sync
+        if: env.IS_RELEASE == 'true'
         run: npx cap sync android
 
       - uses: actions/setup-java@v4
+        if: env.IS_RELEASE == 'true'
         with:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+        if: env.IS_RELEASE == 'true'
 
       - name: Gradle (release APK + AAB)
+        if: env.IS_RELEASE == 'true'
         working-directory: android
         run: ./gradlew --no-daemon assembleRelease bundleRelease -PreleaseBuild="$IS_RELEASE"
 
       - name: Qualify the actual APK
+        if: env.IS_RELEASE == 'true'
         run: |
           set -uo pipefail
           DATASET="$(node -p "require('./src/refrigerant/dataset.json').dataset")"
@@ -120,7 +121,7 @@ jobs:
           exit $rc
 
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && env.IS_RELEASE == 'true'
         # (qualification.md also records the studio-splash artwork check)
         with:
           name: ${{ steps.ver.outputs.artifact }}
@@ -154,147 +155,3 @@ jobs:
           EOF
           gh release create "v${VERSION}" out/* --latest --target "$GITHUB_SHA" \
             --title "${PRODUCT} v${VERSION}" --notes-file "$RUNNER_TEMP/notes.md"
-
-  smoke:
-    # Real install + launch on an Android emulator. Runs for release builds (tests the freshly built APK), or when a commit message
-    # contains [smoke] (tests the PUBLISHED release asset vN). Emulator evidence only: it is NOT a physical-device test.
-    needs: build
-    if: needs.build.outputs.is_release == 'true' || contains(github.event.head_commit.message, '[smoke]')
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Get the APK under test
-        id: apk
-        run: |
-          set -euo pipefail
-          VERSION="$(tr -d '[:space:]' < release/VERSION)"
-          mkdir -p out
-          if [ "${{ needs.build.outputs.is_release }}" != "true" ] && gh release download "v$VERSION" -p '*.apk' -D out 2>/dev/null; then
-            echo "Testing the PUBLISHED release asset v$VERSION"
-            echo "expect=$VERSION" >> "$GITHUB_OUTPUT"
-          else
-            echo "fetch=artifact" >> "$GITHUB_OUTPUT"
-          fi
-      - uses: actions/download-artifact@v4
-        if: steps.apk.outputs.fetch == 'artifact'
-        with:
-          name: ${{ needs.build.outputs.artifact }}
-          path: out
-      - name: Resolve APK path
-        id: path
-        run: |
-          APK="$(ls out/*.apk | head -1)"
-          echo "apk=$APK" >> "$GITHUB_OUTPUT"
-          echo "expect=${{ needs.build.outputs.is_release == 'true' && needs.build.outputs.version || '' }}${{ steps.apk.outputs.expect }}" >> "$GITHUB_OUTPUT"
-          sha256sum "$APK"
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr ffmpeg
-          python3 -m pip install --quiet pillow
-      - name: Install and launch on an emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        env:
-          EXPECT_VERSION_CODE: ${{ steps.path.outputs.expect }}
-        with:
-          api-level: 34
-          arch: x86_64
-          profile: pixel_6
-          emulator-boot-timeout: 900
-          disable-animations: false
-          script: python3 scripts/android_smoke.py ${{ steps.path.outputs.apk }} smoke-out
-      - name: Smoke report
-        if: always()
-        run: |
-          [ -f smoke-out/smoke-report.md ] && cat smoke-out/smoke-report.md >> "$GITHUB_STEP_SUMMARY" || echo "no smoke report produced"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: android-smoke
-          path: smoke-out/
-          if-no-files-found: ignore
-
-  promote:
-    # Publish an already-built, already-qualified release under its public version WITHOUT rebuilding: the existing release is retitled
-    # "CFM Calculator vN", taken off prerelease, made Latest, and its binaries are replaced by identical-bytes copies named CFM-Calculator-vN.*
-    # (SHA-256 verified). The historical tag is never touched. Request via "Run workflow" inputs OR a branch push with release/promote.json.
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/'))
-    runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Read promotion request
-        id: req
-        env:
-          INPUT_N: ${{ inputs.promote_version }}
-          INPUT_FROM: ${{ inputs.promote_from_tag }}
-        run: |
-          set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then N="$INPUT_N"; FROM="$INPUT_FROM"
-          elif [ -f release/promote.json ]; then N="$(jq -r .version release/promote.json)"; FROM="$(jq -r .from release/promote.json)"
-          else echo "run=false" >> "$GITHUB_OUTPUT"; echo "No promotion requested."; exit 0; fi
-          [[ "$N" =~ ^[0-9]+$ ]] || { echo "version must be an integer"; exit 1; }
-          [ -n "$FROM" ] || { echo "from tag is required"; exit 1; }
-          CUR="$(gh release view "$FROM" --json name -q .name)"
-          if [ "$CUR" = "${PRODUCT} v${N}" ]; then echo "Release $FROM is already published as '$CUR'. Nothing to do."; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0; fi
-          if gh release view "v$N" >/dev/null 2>&1; then echo "A release tagged v$N already exists; versions are never reused."; exit 1; fi
-          { echo "run=true"; echo "n=$N"; echo "from=$FROM"; } >> "$GITHUB_OUTPUT"
-
-      - name: Publish existing release as the public version
-        if: steps.req.outputs.run == 'true'
-        env:
-          N: ${{ steps.req.outputs.n }}
-          FROM: ${{ steps.req.outputs.from }}
-        run: |
-          set -euo pipefail
-          mkdir dl out
-          gh release download "$FROM" -D dl
-          APK="$(ls dl/*.apk)"; AAB="$(ls dl/*.aab)"
-          WANT="$(grep '\.apk$' dl/SHA256SUMS.txt | cut -d' ' -f1)"
-          HAVE="$(sha256sum "$APK" | cut -d' ' -f1)"
-          [ "$WANT" = "$HAVE" ] || { echo "APK checksum mismatch: $WANT vs $HAVE"; exit 1; }
-          SRC="$(gh api "repos/$GITHUB_REPOSITORY/commits/$FROM" --jq .sha)"
-          OLD_APK="$(basename "$APK")"; OLD_AAB="$(basename "$AAB")"
-          NAME="${FILE_PREFIX}-v${N}"
-          cp "$APK" "out/$NAME.apk"; cp "$AAB" "out/$NAME.aab"; cp dl/qualification.md out/qualification.md
-          cmp "$APK" "out/$NAME.apk"
-          (cd out && sha256sum "$NAME.apk" "$NAME.aab" > SHA256SUMS.txt)
-          cat > "$RUNNER_TEMP/notes.md" <<EOF
-          # ${PRODUCT} v${N}
-
-          **Android - install this file:** \`${NAME}.apk\`
-
-          Next version will be **v$((N + 1))**.
-
-          Debug-signed test key that changes per build: uninstall any previous test build before installing.
-
-          ## Technical details (engineering only)
-          - Binary published UNCHANGED (not rebuilt): identical bytes to the original asset \`${OLD_APK}\`, SHA-256 verified.
-          - Source commit: ${SRC}
-          - APK SHA-256: ${HAVE}
-          - Inside this older build the app shows its engineering version in About ("4.1.0 (build ${N})"); builds from v$((N + 1)) onward show "v$((N + 1))", "v$((N + 2))", ...
-          - Android versionCode: ${N}
-          - Package: ${EXPECTED_PACKAGE}
-          - Historical git tag: \`${FROM}\` (unchanged; kept for provenance)
-          - Original asset names: ${OLD_APK}, ${OLD_AAB}
-          - Full qualification output: qualification.md; checksums: SHA256SUMS.txt
-          EOF
-          # upload the clean copies first, then remove the cryptic originals, then present as Latest
-          gh release upload "$FROM" out/* --clobber
-          gh release delete-asset "$FROM" "$OLD_APK" -y
-          gh release delete-asset "$FROM" "$OLD_AAB" -y
-          gh release edit "$FROM" --title "${PRODUCT} v${N}" --notes-file "$RUNNER_TEMP/notes.md" --prerelease=false --latest
-          # Older release: display title only.
-          if gh release view v4.0.0-test.1 >/dev/null 2>&1; then
-            gh release edit v4.0.0-test.1 --title "${PRODUCT} v4 (historical test build)" || true
-          fi

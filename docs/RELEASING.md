@@ -22,18 +22,30 @@ diagnostics, release title, tag, filenames and notes are all derived from it. A 
 1. Make sure `release/VERSION` is the next unused number `N` (it already is after any release; bump it in the commit that prepares the build).
 2. Merge/commit the source, then either push the tag (`git tag vN && git push origin vN`) **or**, where tags cannot be pushed, commit a file `release/deliver`
    containing `N` (the workflow then creates tag `vN` at that commit). Either way the number must equal `release/VERSION` and `vN` must not exist yet.
-3. The `Android build` workflow builds, qualifies (package, production versionName/versionCode, not debuggable, targetSdk, signature, permissions, ABIs, 16 KB, alignment, native splash resources, icon, bundled studio card, canonical logo bytes), publishes **Verbal's CFM Calculator vN** as Latest, then runs an emulator install/launch smoke test (`scripts/android_smoke.py`; emulator evidence only). Add `[smoke]` to a commit message to run the smoke test on a non-release build.
+3. The `Android build` workflow builds, qualifies (package, production versionName/versionCode, not debuggable, targetSdk, signature, permissions, ABIs, 16 KB, alignment, native splash resources, icon, bundled studio card, canonical logo bytes), publishes **Verbal's CFM Calculator vN** as Latest, and stops. The emulator smoke test is no longer automatic (budget policy): to run it against a PUBLISHED build, commit `release/smoke` containing that version number N (`smoke.yml`; emulator evidence only, not a physical test).
 4. Immediately afterwards bump `release/VERSION` to `N+1` for the following build.
 
 Rules: never reuse a number for a different binary; never overwrite a published version; failed CI attempts and developer-only builds do not consume numbers.
 CI builds from branches/PRs are named `CFM-Calculator-CI-<sha>.apk`, say `v<N>-dev` in About, and are never published as releases.
 
 ## Publishing an existing verified binary under its public version (no rebuild)
-Used once for v5 (`release/promote.json`, since removed). Either Actions → **Android build** → *Run workflow* (`promote_version=N`, `promote_from_tag=<existing tag>`), or commit `release/promote.json`
+Used once for v5 (`release/promote.json`, since removed). Either Actions → **Promote verified release** → *Run workflow* (`promote_version=N`, `promote_from_tag=<existing tag>`), or commit `release/promote.json`
 (`{"version": N, "from": "<tag>"}`; idempotent). The workflow downloads the release's exact binary, verifies its SHA-256 against that release's `SHA256SUMS.txt`, uploads
 identical-bytes copies named `CFM-Calculator-vN.apk/.aab`, removes the cryptic original asset names, retitles the release `CFM Calculator vN`, takes it off prerelease and makes it
 **Latest**. The historical git tag is never moved or deleted (the Actions token cannot create a new tag at a commit that modified workflow files, and proxy sessions cannot push tags, so v5
 keeps its historical tag name `v4.1.0-test.3`; only the title and filenames are public-facing).
+
+## Workflows and the Actions budget
+Hosted minutes are scarce (policy: CLAUDE.md "Actions budget"). Validate locally first: `npm run check:all` (or `npm run check:fast` without the browser step) runs typecheck, lint, all tests, web build, splash asset check and the real-browser splash check via `scripts/local-check.sh`.
+
+| Workflow | Runs when | Cost |
+|---|---|---|
+| `ci.yml` | non-draft PR opened/updated, or push to `main`; ignores docs, `*.md`, `release/**`, smoke/promote files; cancels superseded runs | ~3 min, no APK |
+| `android.yml` (Release build) | tag `vN`, or a push touching `release/deliver` that is a real delivery | full APK/AAB build + qualification + publish; a non-delivery `release/deliver` push stops after seconds |
+| `promote.yml` | `release/promote.json` changed, or manual | seconds; no rebuild |
+| `smoke.yml` | `release/smoke` changed, or manual | emulator, ~10-20 min; opt-in |
+
+Docs-only and bookkeeping changes trigger nothing. Keep PRs in draft while iterating. Hosted runs are for: final CI of a release candidate, tests not reproducible locally, artifacts needed for physical testing/release, OTA publication checks and store/release builds. Not for: per-push APKs, unrequested platform builds, re-running to see if a test passes, rebuilding an already-verified SHA.
 
 ## History and numbering decision
 | Public version | Build | versionName / versionCode | Where |

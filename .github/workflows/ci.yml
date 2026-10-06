@@ -1,0 +1,53 @@
+name: CI (cheap checks)
+
+# GitHub Actions budget policy: CLAUDE.md ("Actions budget"). Validate locally first (npm run check:all); this is only the cheap,
+# single, final check of a candidate. No Gradle, no APK/AAB, no emulator, no browser install, no artifacts.
+#  * pull requests only (NOT a second run on the same push), never for drafts, never for docs-only / release-bookkeeping changes
+#  * pushes to main only (the merge result), same path filters
+#  * superseded runs are cancelled
+# APK builds happen only in android.yml (release), see docs/RELEASING.md.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    paths-ignore: &ignored
+      - '**.md'
+      - 'docs/**'
+      - 'CLAUDE.md'
+      - '.gitignore'
+      - 'release/**'
+      - 'scripts/android_smoke.py'
+      - 'scripts/ui_smoke.py'
+      - '.github/workflows/smoke.yml'
+      - '.github/workflows/promote.yml'
+  push:
+    branches: [main]
+    paths-ignore: *ignored
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - name: Unit, calculation-regression, identity and workflow-policy tests
+        run: npm test
+      - name: Web build
+        run: npm run build
+      - name: Studio splash - built bundle contains the canonical logo
+        run: node scripts/verify-splash-asset.mjs
